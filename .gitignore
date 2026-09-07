@@ -1,0 +1,20 @@
+# dependencies / build output
+node_modules/
+server/node_modules/
+dist/
+release/
+
+# environment & secrets
+.env
+server/.env
+*.local
+
+# pyinstaller / log artifacts
+*.spec
+*.log
+vns-logs/
+
+# stray pipeline sidecars accidentally written to the repo root
+HealthStatus.*
+LR.*
+PP.*

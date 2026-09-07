@@ -1,0 +1,394 @@
+/* =====================================================
+   COLOR PALETTE (Vibrant Light-to-Dark Blue Palette)
+===================================================== */
+:root {
+  /* Requested Space Wallpaper Background URL */
+  --space-img-url: url('adminbg.jpg');
+
+  /* Blue Gradient Overlay (Prevents pure black tint, adds royal blue depth) */
+  --modal-bg: 
+    linear-gradient(180deg, rgba(8, 26, 60, 0.45) 0%, rgba(5, 16, 38, 0.88) 100%),
+    var(--space-img-url);
+
+  /* Rich Blue Glassmorphism Layers */
+  --header-bg: transparent;                                       /* Reverted — keeps the space photo visible behind the header text */
+  --card-bg: linear-gradient(180deg, rgba(16, 44, 87, 0.75) 0%, rgba(9, 28, 59, 0.85) 100%); 
+  --card-hover: linear-gradient(180deg, rgba(28, 70, 133, 0.85) 0%, rgba(14, 40, 80, 0.9) 100%);
+  --section-bg: rgba(9, 28, 59, 0.75);
+  --input-bg: rgba(5, 18, 41, 0.85);
+  --table-header-bg: #132e5d;                                     /* Matches Image 1's panel__bar tone */
+
+  /* Outer bars/borders now use Image 1's blue instead of cyan */
+  --border-subtle: rgba(47, 107, 189, 0.35);
+  --border-bright: #2f6bbd;
+
+  /* Text & Accent Highlights */
+  --text-primary: #ffffff;
+  --text-secondary: #93c5fd;                                      /* Light blue text */
+  --accent-cyan: #2f6bbd;
+  
+  /* Badges & Indicators */
+  --status-active-bg: rgba(47, 107, 189, 0.2);
+  --status-active-text: #7bb3f7;
+  --status-lock-bg: rgba(239, 68, 68, 0.2);
+  --status-lock-text: #f87171;
+}
+
+/* =====================================================
+   MAIN OVERLAY & DESKTOP MODAL
+===================================================== */
+.authoverlay {
+  position: fixed;
+  inset: 0;
+  background: #040d1a;                                            /* Deep royal blue base page */
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+}
+
+.admin-modal {
+  position: relative;
+  width: 100%;
+  max-width: 1100px;
+  max-height: 90vh;
+  
+  /* YOUR IMAGE APPLIED HERE */
+  background: var(--modal-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 25px 60px rgba(2, 8, 20, 0.9), 0 0 45px rgba(56, 189, 248, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.authoverlay-close {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 22px;
+  cursor: pointer;
+  z-index: 10;
+  transition: color 0.2s, transform 0.2s;
+}
+
+.authoverlay-close:hover {
+  color: var(--text-primary);
+  transform: scale(1.1);
+}
+
+/* =====================================================
+   HEADER & INNER BODY
+===================================================== */
+.admin-header {
+  padding: 26px 32px 10px 32px;
+  background: var(--header-bg);
+}
+
+.authcard__mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--accent-cyan);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.authcard__mark-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--accent-cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--accent-cyan);
+}
+
+.admin-title {
+  margin: 8px 0 4px 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.admin-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* VERTICAL MAIN BODY WRAPPER */
+.admin-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 32px 32px 32px;
+  display: flex;
+  flex-direction: column;                                         /* Forces vertical layout */
+  gap: 20px;
+}
+
+/* =====================================================
+   STAT CARDS (Horizontal row at top)
+===================================================== */
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+.admin-stat-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 16px 20px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+}
+
+.admin-stat-card:hover {
+  background: var(--card-hover);
+  border-color: var(--border-bright);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4), 0 0 15px rgba(56, 189, 248, 0.3);
+}
+
+.admin-stat-card h3 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.admin-stat-card span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* =====================================================
+   VERTICAL SECTIONS & TABLE CONTAINERS
+===================================================== */
+.admin-section {
+  background: var(--section-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 20px;
+  width: 100%;
+  box-sizing: border-box;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.admin-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.admin-toolbar h2,
+.admin-section h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.admin-toolbar input {
+  width: 260px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.admin-toolbar input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+}
+
+.admin-toolbar input::placeholder {
+  color: #60a5fa;
+}
+
+/* TABLE SCROLL CONTAINER */
+.admin-table-container {
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--input-bg);
+}
+
+.admintable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.admintable thead th {
+  position: sticky;
+  top: 0;
+  background: var(--table-header-bg);
+  z-index: 2;
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.admintable td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.admintable tr:hover td {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.admintable tr:last-child td {
+  border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+  padding-bottom: 14px;
+}
+
+.admintable select {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+}
+
+.admintable select:focus {
+  border-color: var(--accent-cyan);
+}
+
+/* Status Badges */
+.admintable__active,
+.admintable__lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.admintable__active {
+  background: var(--status-active-bg);
+  color: var(--status-active-text);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.admintable__lock {
+  background: var(--status-lock-bg);
+  color: var(--status-lock-text);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.admintable__pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(251, 191, 36, 0.15);
+  color: #f5c45c;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
+
+.admintable__rejected {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f8a0a0;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.authbtn--danger {
+  background: linear-gradient(180deg, #b0452f, #6e1f10);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.authbtn--danger:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(180deg, #cf5238, #87281a);
+}
+
+.admin-role-select {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.admin-you {
+  margin-left: 6px;
+  color: var(--accent-cyan);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Empty state styling for Pending Requests */
+.admin-empty-text {
+  margin: 12px 0 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* =====================================================
+   BLUE / CYAN SCROLLBARS
+===================================================== */
+.admin-body::-webkit-scrollbar,
+.admin-table-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-body::-webkit-scrollbar-track,
+.admin-table-container::-webkit-scrollbar-track {
+  background: rgba(5, 18, 41, 0.85);
+}
+
+.admin-body::-webkit-scrollbar-thumb,
+.admin-table-container::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.4);
+  border-radius: 4px;
+}
+
+.admin-body::-webkit-scrollbar-thumb:hover,
+.admin-table-container::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-cyan);
+}

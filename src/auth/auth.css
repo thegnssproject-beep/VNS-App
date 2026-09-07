@@ -1,0 +1,298 @@
+/* ===========================
+   VNS AUTH UI - IMAGE 2 MATCH
+=========================== */
+
+.authshell {
+    min-height: 100vh;
+    width: 100%;
+
+    display: flex;
+    justify-content: center;
+    
+    /* 1. Change center to flex-end to lower the card */
+    align-items: flex-end; 
+
+    /* 2. Push it up slightly from the bottom edge */
+    padding-bottom: 60px; 
+
+    background: url('/bg.jpg') no-repeat center center / cover;
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.authshell * {
+    box-sizing: border-box;
+}
+
+/* ===========================
+   CARD CONTAINER
+=========================== */
+
+.authcard {
+    width: 100%;
+    max-width: 1100px;
+    height: 560px;
+
+    display: grid;
+    grid-template-columns: 48% 52%;
+
+    /* Fix corner clipping and border-radius leaks */
+    overflow: hidden;
+    border-radius: 20px;
+    isolation: isolate;
+
+    /* Clean outer frame & soft shadow */
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 
+        0 30px 60px rgba(0, 0, 0, 0.6),
+        0 0 40px rgba(10, 40, 90, 0.3);
+
+    position: relative;
+}
+
+/* ===========================
+   LEFT PANEL (GLASSMORPHISM)
+=========================== */
+
+.auth-left {
+    /* Translucent dark glass panel showing moon surface behind it */
+    background: rgba(12, 22, 38, 0.5);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    padding: 60px;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+
+    position: relative;
+    z-index: 2;
+    overflow: hidden;
+}
+
+/* Translucent angled ribbon effect */
+.auth-left::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: -75px;
+    width: 150px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.06);
+    transform: skewX(-14deg);
+    z-index: -1;
+}
+
+/* ===========================
+   RIGHT PANEL (ROYAL DEEP BLUE)
+=========================== */
+
+.auth-right {
+    /* Deep royal blue gradient from Image 2 */
+    background: linear-gradient(135deg, #0e3b82 0%, #0a295c 50%, #06183b 100%);
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    position: relative;
+    overflow: hidden;
+}
+
+/* Concentric circular lines in background */
+.auth-right::before {
+    content: "";
+    position: absolute;
+    width: 520px;
+    height: 520px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    right: -180px;
+    top: -80px;
+}
+
+.auth-right::after {
+    content: "";
+    position: absolute;
+    width: 320px;
+    height: 320px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    left: 10px;
+    bottom: 10px;
+}
+
+.auth-right-content {
+    width: 80%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    z-index: 10;
+}
+
+.auth-right-content h2 {
+    margin: 0;
+    color: #ffffff;
+    font-size: 38px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: 0.03em;
+}
+
+.auth-right-content p {
+    margin: 18px 0 35px;
+    color: #b8d2f5;
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+/* ===========================
+   LOGO & TITLE
+=========================== */
+
+.auth-logo {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #154285, #0a2147);
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    color: #ffffff;
+    font-size: 19px;
+    font-weight: 700;
+    margin-bottom: 30px;
+
+    box-shadow: 0 0 20px rgba(21, 66, 133, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.auth-title {
+    color: #ffffff;
+    margin: 0 0 30px;
+    font-size: 34px;
+    font-weight: 700;
+}
+
+/* ===========================
+   INPUTS & FORM
+=========================== */
+
+.auth-form {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.auth-input,
+.authbtn,
+.auth-links {
+    width: 100%;
+}
+
+.auth-input input {
+    width: 100%;
+    display: block;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 12px 0;
+    color: #ffffff;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.25s;
+}
+
+.auth-input input::placeholder {
+    color: #6182a8;
+}
+
+.auth-input input:focus {
+    border-bottom: 2px solid #2872d8;
+}
+
+/* ===========================
+   BUTTONS
+=========================== */
+
+.authbtn {
+    border: none;
+    border-radius: 30px;
+    padding: 14px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.25s ease;
+}
+
+.authbtn--primary {
+    background: linear-gradient(180deg, #184f9e, #0c2d61);
+    color: #ffffff;
+    box-shadow: 0 8px 22px rgba(12, 45, 97, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.authbtn--primary:hover {
+    transform: translateY(-2px);
+    background: linear-gradient(180deg, #1e5cb7, #0e3775);
+    box-shadow: 0 12px 28px rgba(30, 92, 183, 0.5);
+}
+
+/* ===========================
+   FOOTER LINKS
+=========================== */
+
+.auth-links {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.authlink {
+    background: none;
+    border: none;
+    color: #7b9cc4;
+    cursor: pointer;
+    font-size: 13.5px;
+    transition: color 0.2s;
+}
+
+.authlink:hover {
+    color: #ffffff;
+}
+
+/* ===========================
+   MESSAGES (error / success / info)
+=========================== */
+
+.authmsg {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    line-height: 1.4;
+}
+
+.authmsg--error {
+    background: rgba(224, 71, 63, 0.15);
+    border: 1px solid rgba(224, 71, 63, 0.55);
+    color: #ff9b94;
+}
+
+.authmsg--ok {
+    background: rgba(87, 196, 126, 0.15);
+    border: 1px solid rgba(87, 196, 126, 0.55);
+    color: #9fe4bb;
+}
+
+.authmsg--info {
+    background: rgba(63, 143, 214, 0.15);
+    border: 1px solid rgba(63, 143, 214, 0.55);
+    color: #a9d4f5;
+}

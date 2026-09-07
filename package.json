@@ -1,8 +1,9 @@
 {
-  "name": "vns-app",
+"name": "vns-app",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
+  "description": "VNS Mission Console — rover vision/navigation pipeline desktop app",
+  "author": "thegnssproject-beep",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",

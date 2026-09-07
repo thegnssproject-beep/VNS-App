@@ -356,3 +356,29 @@ every stage out of the box; production binaries override via
 > authenticates against `http://localhost:4000`. Target machines do **not**
 > need Node, npm, Python, or a MySQL service installed — just the portable
 > MySQL directory and the backend, started with the launch script.
+
+### Build notes (read before packaging)
+
+- **Vite base must stay relative.** `vite.config.js` sets `base: "./"`; if it is
+  changed back to the default absolute base, the packaged window shows a blank
+  white screen (the built `dist/index.html` resolves `/assets/...` against the
+  drive root over `file://` instead of the app folder).
+- **Run `electron-builder` from an elevated (admin) PowerShell.** On this
+  machine the `winCodeSign` binary cache is extracted with 7-zip, which needs
+  the `SeCreateSymbolicLinkPrivilege` to create two macOS-library symlinks
+  (`darwin/10.12/lib/lib{crypto,ssl}.dylib`); without elevation the build fails
+  on that extraction step.
+- **Close the app before rebuilding.** If you launch the portable copy
+  `release\win-unpacked\vns-app.exe` and leave it running while you rebuild,
+  `electron-builder` fails clearing `release\` with
+  `remove ...d3dcompiler_47.dll: Access is denied` (the build may also leave a
+  stale, half-cleaned output). Quit the app — or delete `release\` manually —
+  before running `npm run electron:build` again.
+- **Bundled stage exes resolve from `app.asar.unpacked`.** Inside the packaged
+  app, stage executables are found at
+  `<install>\resources\app.asar.unpacked\scripts\bin\` — never at
+  `<install>\resources\app.asar\scripts\bin\` (Electron's `fs.existsSync`
+  reports asar entries as present, but `scripts/bin` is unpacked, so spawning
+  the plain asar path fails with `ENOENT`). Resolution order per stage:
+  `<workspace root>\bin\<stage>.exe` → bundled `app.asar.unpacked\...` → the
+  `.py` dev fallback.

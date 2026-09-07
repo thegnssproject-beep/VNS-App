@@ -719,4 +719,56 @@ resolves per click; no restart needed).
   folders. Verified with the exact JS reader logic: 4/4 rows on each channel,
   JSON + CSV. No other file/stage touched.
 
+## §18 — Packaging into a Windows installer & shipped-app fixes (2026-09-07)
+
+### What changed
+- `npm run electron:build` now produces a working NSIS one-click installer,
+  `release\vns-app Setup 0.0.0.exe` (~184 MB), plus the portable
+  `release\win-unpacked\` folder. `build/icon.ico` regenerated as a real
+  multi-size 16/32/48/256 ICO (215,965 B) from `build/icon.png` (512²) via a
+  hand-assembled ICO (sharp can't write `.ico`). `package.json` gained
+  `description`/`author`; the app exe metadata is stamped (v0.0.0,
+  thegnssproject-beep). All commits through `a9c9394` pushed to GitHub.
+
+### §18.1 Packaged app showed a blank white window → vite `base: "./"`
+- Cause: built `dist/index.html` referenced `/assets/...` absolutely. Vite's
+  dev server served those; in the packaged app `loadFile()` reads it over
+  `file://`, so `/assets/...` resolved to the drive root → blank renderer.
+- Fix: `base: "./"` in `vite.config.js` → assets become `./assets/...`.
+  Confirmed the relative paths inside the shipped `app.asar`.
+
+### §18.2 Workspace data now auto-loads on folder selection
+- InputScreen intentionally never auto-loaded on mount; data only appeared
+  after Run Algorithms/Play bumped `runSignal`/`playSignal`. In dev this was
+  masked (the dev session had already run the pipeline); a fresh installed app
+  sat empty after picking a workspace folder.
+- `chooseRootAndLoad` wraps `chooseRoot()` in `VNSApp.jsx` and, on a successful
+  pick, bumps `playSignal` (02_Raw_Image lists → CAM-L/CAM-R) and `runSignal`
+  (latest session outputs + NavCam capture/properties on every tab).
+- InputScreen's two effects switched from skip-first-render-ref gating to
+  `signal === 0` gating — the whole tab remounts per folder via `key`, so the
+  ref guards were swallowing the post-selection bump.
+
+### §18.3 Packaged stage-exe buttons failed with ENOENT
+- Symptom (installed build): `spawn ...\app.asar\scripts\bin\preprocess.exe
+  ENOENT` in the run toast.
+- Cause: `scriptDirs()` in `scriptRunner.cjs` checked
+  `appPath/scripts` (the `.asar` path) before
+  `appPath/../app.asar.unpacked/scripts`. Electron's patched `fs.existsSync`
+  reports packed asar entries as existing, but `scripts/bin` was `asarUnpack`ed
+  so that path is phantom on disk → spawn ENOENT (exes were always bundled and
+  work fine directly).
+- Fix: `scriptDirs()` detects packaged mode via `path.extname(appPath) ===
+  ".asar"` and returns the real `app.asar.unpacked` dir first, falling back to
+  the plain path only when no asar exists (dev). Verified the fix is inside the
+  shipped asar with all 10 stage exes un-packed.
+
+### Build-process notes for this machine
+- `electron-builder` needs admin for the `winCodeSign` cache extraction
+  (7-zip must create two macOS `.dylib` symlinks → needs
+  `SeCreateSymbolicLinkPrivilege`) — run the build from an elevated PowerShell.
+- A running `release\win-unpacked\vns-app.exe` locks DLLs and makes
+  `electron-builder` fail with `Remove ...d3dcompiler_47.dll: Access is
+  denied` — close the app / delete `release\` before rebuilding.
+
 

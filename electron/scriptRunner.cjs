@@ -142,13 +142,20 @@ class ScriptRunner {
 
   // Where bundled scripts live on disk. In a packaged build Electron packs
   // app files into an asar archive, but a spawned .exe needs a REAL path, so
-  // we prefer the automatically unpacked copy (app.asar.unpacked) and fall
-  // back to the plain path when that doesn't exist (dev / unpacked mode).
+  // we must use the automatically unpacked copy (app.asar.unpacked). The
+  // plain path.join(appPath, "scripts") would point INSIDE the asar — and
+  // although Electron's patched fs.existsSync reports those phantom asar
+  // paths as existing, they are not real on disk, so spawn() fails with
+  // ENOENT. We therefore check the unpacked dir FIRST, and only fall back to
+  // the raw path when packing is off (dev / unpacked mode where no asar
+  // exists and appPath/scripts is genuinely on disk).
   scriptDirs() {
-    return [
-      path.join(this.appPath, "scripts"),
-      path.join(this.appPath, "..", "app.asar.unpacked", "scripts"),
-    ];
+    const unpacked = path.join(this.appPath, "..", "app.asar.unpacked", "scripts");
+    const plain = path.join(this.appPath, "scripts");
+    // app.getAppPath() ends in ".asar" only when packaged; then the unpacked
+    // dir is the one that holds REAL files on disk for spawn().
+    const packaged = !!this.appPath && path.extname(this.appPath) === ".asar";
+    return packaged ? [unpacked, plain] : [plain, unpacked];
   }
 
   // All configured actions (id + fileName + description). Exposed to the UI

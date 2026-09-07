@@ -1196,39 +1196,36 @@ const InputScreen = forwardRef(function InputScreen({ setExpandedContent, pushTo
     applyProperties(entries);
   }, [inputCapture, propertiesCapture, applyCapture, applyProperties]);
 
-  // Intentionally NOT auto-loading on mount: every window should start
-  // empty on login. Nothing is pulled in from disk until the user presses
-  // Play (see the playSignal effect below) — the green status dot is what
-  // tells them a new raw image is waiting.
+  // Intentionally NOT auto-loading on login: the pre-folder state stays
+  // empty. As soon as a workspace folder is chosen, chooseRootAndLoad bumps
+  // runSignal+playSignal (and the tab remounts per folder), so everything
+  // already on disk for that folder is pulled in automatically — no manual
+  // Play needed.
 
-  // Fires every time the topbar Play button is clicked (playSignal bumped).
-  // Per spec: Play only pulls in whatever's waiting in 02_Raw_Image (into
-  // CAM-L/CAM-R — left images on CAM-L, right images on CAM-R) and clears
-  // the blinking status dot. It does NOT touch the main NavCam panel or the
-  // Property bar — those (like every other screen/window) stay empty until
-  // Run Algorithms succeeds (see the runSignal effect below).
-  const isFirstPlaySignal = useRef(true);
+  // Fires every time the topbar Play button is clicked (playSignal bumped) —
+  // and, after a workspace folder is chosen, on tab (re)mount, since the
+  // whole tab is force-remounted per folder and the signal is already non-
+  // zero then. Gating on playSignal===0 keeps the pre-folder login state
+  // empty. Per spec: Play only pulls in whatever's waiting in 02_Raw_Image
+  // (into CAM-L/CAM-R — left images on CAM-L, right images on CAM-R) and
+  // clears the blinking status dot. It does NOT touch the main NavCam panel
+  // or the Property bar — those (like every other screen/window) stay empty
+  // until Run Algorithms succeeds (see the runSignal effect below).
   useEffect(() => {
-    if (isFirstPlaySignal.current) {
-      isFirstPlaySignal.current = false; // skip the initial render's signal
-      return;
-    }
+    if (playSignal === 0) return;
     if (rawWatch?.available) {
       rawWatch.loadLatest().then(({ left, right }) => applyRawImages(left, right));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playSignal]);
 
-  // Fires every time Run Algorithms succeeds. Only the NavCam panel +
-  // Property bar are relevant here — Run Algorithms writes into
-  // 03_Input_Image, not 02_Raw_Image, so CAM-L/CAM-R (the raw browser) has
-  // nothing new to pull in.
-  const isFirstRunSignal = useRef(true);
+  // Fires every time Run Algorithms succeeds, and on tab (re)mount once a
+  // signal exists — e.g. right after a workspace folder is selected. Only the
+  // NavCam panel + Property bar are relevant here — Run Algorithms writes
+  // into 03_Input_Image, not 02_Raw_Image, so CAM-L/CAM-R (the raw browser)
+  // has nothing new to pull in.
   useEffect(() => {
-    if (isFirstRunSignal.current) {
-      isFirstRunSignal.current = false; // skip the initial render's signal
-      return;
-    }
+    if (runSignal === 0) return;
     loadCaptureAndProperties();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runSignal]);
@@ -3095,6 +3092,21 @@ const [activeScreen, setActiveScreen] = useState(() => {
   const { root: workspaceRoot, chooseRoot: chooseWorkspaceRoot, available: workspaceAvailable } = useWorkspaceRoot();
   const workspaceKey = workspaceRoot || "no-workspace";
 
+  // Wraps the header's "Select Folder" action so a successful choice is
+  // treated like a fresh data signal: runSignal (latest session outputs +
+  // NavCam capture/properties) and playSignal (the 02_Raw_Image lists on
+  // CAM-L/CAM-R) both bump, so every tab auto-loads whatever's already on
+  // disk for the newly selected folder instead of sitting empty until the
+  // user presses Run Algorithms or Play.
+  const chooseRootAndLoad = useCallback(async () => {
+    const chosen = await chooseWorkspaceRoot();
+    if (chosen) {
+      setPlaySignal((n) => n + 1);
+      setRunSignal((n) => n + 1);
+    }
+    return chosen;
+  }, [chooseWorkspaceRoot]);
+
   // Owned here (not inside InputScreen) so the single top status dot can see
   // the same state that drives the panels' Play-button loads.
   const rawWatch = useRawImagesWatch();
@@ -3353,7 +3365,7 @@ useEffect(() => {
             propertiesCapture={propertiesCapture}
             rawWatch={rawWatch}
             workspaceRoot={workspaceRoot}
-            chooseWorkspaceRoot={chooseWorkspaceRoot}
+            chooseWorkspaceRoot={chooseRootAndLoad}
             workspaceAvailable={workspaceAvailable}
           />
         )}

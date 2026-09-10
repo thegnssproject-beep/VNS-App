@@ -4,7 +4,7 @@
 > without losing context. Lives next to `README.md` in the project root.
 
 **Project root:** `C:\YousufVNS\vns-app\vns-app`
-**Last updated (work state):** Sections 16–17 — report generation moved out of pdfkit into a new pure-stdlib Python engine `scripts/pipeline/report.py`, driven by `electron/reportEngine.cjs` (data-URL images → JSON manifest → `scriptRunner.run("report", …)`). `pdfkit` removed. Five report bugs fixed in app: exit-code-1 (UnicodeEncodeError, 16.1), `/Contents`→Page-dict refs (16.2), `/Kids`→content-stream refs + missing `/Encoding /WinAnsiEncoding` (16.3, the blank/empty issue), centred/right text pushed off-page (`bx=width` base; 16.4), and table rows both misaligned (single shared baseline through all cells) and spilling out of boxes + blAnk JPEGs (zlib-compressed DCT streams; 16.5). All verified via pypdf extraction + per-op coordinate audit + PDFium pixel checks (DCT streams now `ff d8`, figure rects show real imagery std 78–90). §17: all 10 stage scripts compiled to standalone `scripts/bin/NAME.exe` via PyInstaller 6.22.2 — every exe verified byte-identical to its `.py` run (images/sidecars/PDF), picked up automatically by `scriptRunner.cjs` (prefers `exe:` over `.py`), no restart needed. 17.1: EXECUTABLE CONTRACT documented + stage cwd unified to the workspace root. 17.2: delivered-app swap = drop real exes at `<workspace root>\bin\<stage>.exe` (checked first, live per click) — `findScript(overrideDir)` + threaded through all run paths incl. report. 17.3: `telemetry.py` aligns its column schema per channel (`telecommand` vs `telemetry`) and the telemetry sidecar was regenerated — kills the "no rows matched" log spam. To restyle the PDF, edit `scripts/pipeline/report.py` only.
+**Last updated (work state):** Section 19 — app made fully SELF-CONTAINED: the Express backend now runs inside the Electron main process (`electron/server/*`, embedded on 127.0.0.1:4000) and MySQL was replaced with embedded SQLite (`better-sqlite3`, DB at `%APPDATA%\vns-app\vns.db`, auto-created + admin-seeded on first run). No external MySQL, no separate backend process, no manual schema bootstrap. Renderer unchanged (still `http://localhost:4000/api`). Verified end-to-end: E2E API test under Electron's runtime (all flows pass), packaged `release\win-unpacked\vns-app.exe` runs standalone from empty userData — health OK, seeded admin logs in, DB file created.
 
 ---
 
@@ -770,5 +770,83 @@ resolves per click; no restart needed).
 - A running `release\win-unpacked\vns-app.exe` locks DLLs and makes
   `electron-builder` fail with `Remove ...d3dcompiler_47.dll: Access is
   denied` — close the app / delete `release\` before rebuilding.
+
+---
+
+## §19 — Fully self-contained app: embedded backend + SQLite (2026-09-09)
+
+Goal: give someone the release zip and they install & run it with **nothing
+else** — no Node, no MySQL, no manual DB bootstrap. (Before this, the
+shipped `win-unpacked` app was just the Electron shell; login/admin needed the
+external Express server on :4000 plus portable MySQL 8.0.46 with a manual
+`schema.sql` load.)
+
+### What changed
+
+- **Backend moved into the Electron main process** — new `electron/server/`
+  (CommonJS): `db.cjs` (SQLite init + schema + admin seed + a `query()`
+  helper that mimics the old mysql2 `[rows]` shape so route logic is
+  unchanged), `app.cjs` (`createApp()` with cors/cookie-parser/routes),
+  `routes/{auth,admin,roleRequests}.cjs`, `middleware/requireAuth.cjs`.
+  `electron/main.cjs` calls `startEmbeddedServer()` in `app.whenReady()`:
+  `createApp().listen(4000, "127.0.0.1")`, closes on `will-quit`. Old
+  `server/` folder (ESM + mysql2) is now DEAD code, kept only as reference.
+- **MySQL → SQLite** (`better-sqlite3` ^12.2.0). DB file:
+  `%APPDATA%\vns-app\vns.db`, created on first launch, `journal_mode=WAL`.
+  Schema equivalents: `INTEGER PRIMARY KEY AUTOINCREMENT` ids, `TEXT`+
+  `CHECK(...)` for ENUM columns, `TINYINT`→`INTEGER`, `NOW()`→JS ISO
+  string (roleRequests approve/reject), `created_at` defaults via
+  `datetime('now')`. Timestamps stored as ISO strings; expiry comparisons
+  still `new Date(...)` (already handled ISO in SQLite's TEXT).
+- **First-run seed** — if `users` is empty, inserts the built-in admin
+  (`admin@vns.local` / `VNSProject`, the same bcrypt hash as before). A fresh
+  install is immediately usable.
+- **package.json** — added `bcryptjs`, `better-sqlite3`, `cookie-parser`,
+  `cors`, `express` to dependencies; `asarUnpack` now also unpacks
+  `node_modules/better-sqlite3/**/*` (native `.node` must be on real disk).
+- **CORS** — `origin: true` + `credentials: true`: dev renderer
+  (http://localhost:5173) and packaged renderer (file:// → `Origin: null`)
+  both work against the loopback-only server. Session cookie never marked
+  `secure` (no HTTPS on localhost), so it round-trips over http.
+- **start-dev.ps1 / stop-dev.ps1** — rewritten: no more portable MySQL
+  launch, no more hidden `node server/index.js`; the app is the whole
+  environment. `start-dev.ps1` warns if :4000 is already busy (old leftover).
+
+### Renderer
+
+None — `src/lib/apiClient.js` still calls `http://localhost:4000/api`.
+Auth/approval/password-reset all route through the embedded server.
+
+### Verification
+
+- **Electron-runtime E2E** (temp script run via `npx electron`, real admin
+  ABI better-sqlite3): health 200; admin login 200 + wrong-pw 401; `/me`
+  returns admin; `/admin/users` lists seeded admin; signup → pending viewer;
+  forgot-password returns a dev token; reset-password works; token reuse →
+  400; signup row persisted. All pass.
+- `node --check` on main.cjs + all 6 new server files; ESLint clean on all.
+- `npx vite build` green (renderer untouched).
+- **Packaged app standalone test**: deleted `%APPDATA%\vns-app\vns.db`,
+  launched `release\win-unpacked\vns-app.exe` with NO MySQL/backend running →
+  `/api/health` OK, seeded admin logs in (200, role=admin), `vns.db` created,
+  `/api/admin/users` 401 without cookie. Killed cleanly (port released).
+- `npm run electron:build` green. `app.asar.unpacked` contains the 1.9 MB
+  `better_sqlite3.node` AND all 10 stage exes.
+
+### Gotchas / notes for next session
+
+- **Native-ABI dance:** `better_sqlite3` is rebuilt for Electron's ABI via
+  `npx electron-builder install-app-deps` (or during packaging). Re-running a
+  plain `npm install` rebuilds it for system Node ABI → the Electron app will
+  fail to load it until `electron-builder install-app-deps` is re-run. This
+  machine's Node is v24; Electron 31 uses ABI 124.
+- The `allowScripts` npm guard blocks better-sqlite3's install script — run
+  `npm install-scripts approve better-sqlite3` (already done; verified the
+  binary loads under Electron).
+- To distribute: zip `release\win-unpacked\` (or hand them
+  `release\vns-app Setup 0.0.0.exe`). Nothing else needed on the target PC.
+- README's "MySQL bootstrap" steps are now obsolete (harmless, not updated).
+- Old `server/` + portable MySQL (`C:\YousufVNS\mysql\...`) are no longer
+  started by any script; can be deleted.
 
 

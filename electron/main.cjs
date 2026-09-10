@@ -4,8 +4,6 @@ const path = require("path");
 const fs = require("fs");
 const { ScriptRunner } = require("./scriptRunner.cjs");
 const { runReportEngine } = require("./reportEngine.cjs");
-const { createApp } = require("./server/app.cjs");
-const { initDb, seedAdmin } = require("./server/db.cjs");
 
 const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"]);
 
@@ -2089,42 +2087,7 @@ function createWindow() {
   startWatching();
 }
 
-// Embedded backend: the Express API (auth/admin/role-requests) now runs
-// inside this Electron process, backed by an SQLite file in userData — no
-// external server or MySQL to install/start. Seeded with the built-in admin
-// (admin@vns.local / VNSProject) on first run.
-let apiServer = null;
-
-function startEmbeddedServer() {
-  const dbPath = path.join(app.getPath("userData"), "vns.db");
-  try {
-    initDb(dbPath);
-    seedAdmin();
-    apiServer = createApp().listen(4000, "127.0.0.1", () => {
-      console.log(`VNS embedded backend listening on http://127.0.0.1:4000 (db: ${dbPath})`);
-    });
-    apiServer.on("error", (err) => {
-      if (err.code === "EADDRINUSE") {
-        console.error(`VNS backend: port 4000 already in use — ${err.message}`);
-      } else {
-        console.error("VNS backend error:", err.message);
-      }
-    });
-  } catch (err) {
-    // Never let a DB/server failure take down the whole window shell — the
-    // pipeline (images/reports) still works; only auth/admin would be down.
-    console.error("VNS backend failed to start:", err.message);
-  }
-}
-
-app.whenReady().then(() => {
-  startEmbeddedServer();
-  createWindow();
-});
-
-app.on("will-quit", () => {
-  if (apiServer) apiServer.close();
-});
+app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
   stopWatching();

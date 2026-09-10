@@ -771,4 +771,30 @@ resolves per click; no restart needed).
   `electron-builder` fail with `Remove ...d3dcompiler_47.dll: Access is
   denied` — close the app / delete `release\` before rebuilding.
 
+---
+
+## §19 — Self-containment was built then REVERTED (2026-09-10)
+
+The backend was temporarily made self-contained — `electron/server/*` (CJS
+Express + `better-sqlite3` embedded in the Electron main process), MySQL
+dropped, DB auto-seeded at `%APPDATA%\vns-app\vns.db`, new `start-dev.ps1` —
+committed as **e7b182d** and pushed. It worked (verified standalone).
+
+**Reverted by user decision** (`git revert e7b182d` → commit **3df2cdd**,
+pushed): the local/per-install SQLite model means admin approval is
+per-machine, not central — there is NO shared server for one admin to
+approve users across machines. The project keeps the ORIGINAL architecture:
+
+- **External Express backend** on `:4000` (repo `server/`, ESM + mysql2)
+- **Portable MySQL 8.0.46** at `C:\YousufVNS\mysql\...` (manual schema load)
+- **`start-dev.ps1`** starts MySQL + backend + Electron in one go
+- Admin approval is a server-side feature: signup → `pending` → admin
+  approves via the Admin panel on the shared backend.
+
+Current HEAD is the pre-self-containment state (ef9b33b equivalent). The
+GitHub release `v0.0.0` (created during this experiment) still contains the
+**self-contained** installer — do not distribute it; rebuild the installer
+from `main` if a release is needed. `better-sqlite3` and
+`electron/server/*` are fully removed from the tree / node_modules / lockfile.
+
 

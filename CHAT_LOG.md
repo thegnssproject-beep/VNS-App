@@ -4,7 +4,7 @@
 > without losing context. Lives next to `README.md` in the project root.
 
 **Project root:** `C:\YousufVNS\vns-app\vns-app`
-**Last updated (work state):** Sections 16–17 — report generation moved out of pdfkit into a new pure-stdlib Python engine `scripts/pipeline/report.py`, driven by `electron/reportEngine.cjs` (data-URL images → JSON manifest → `scriptRunner.run("report", …)`). `pdfkit` removed. Five report bugs fixed in app: exit-code-1 (UnicodeEncodeError, 16.1), `/Contents`→Page-dict refs (16.2), `/Kids`→content-stream refs + missing `/Encoding /WinAnsiEncoding` (16.3, the blank/empty issue), centred/right text pushed off-page (`bx=width` base; 16.4), and table rows both misaligned (single shared baseline through all cells) and spilling out of boxes + blAnk JPEGs (zlib-compressed DCT streams; 16.5). All verified via pypdf extraction + per-op coordinate audit + PDFium pixel checks (DCT streams now `ff d8`, figure rects show real imagery std 78–90). §17: all 10 stage scripts compiled to standalone `scripts/bin/NAME.exe` via PyInstaller 6.22.2 — every exe verified byte-identical to its `.py` run (images/sidecars/PDF), picked up automatically by `scriptRunner.cjs` (prefers `exe:` over `.py`), no restart needed. 17.1: EXECUTABLE CONTRACT documented + stage cwd unified to the workspace root. 17.2: delivered-app swap = drop real exes at `<workspace root>\bin\<stage>.exe` (checked first, live per click) — `findScript(overrideDir)` + threaded through all run paths incl. report. 17.3: `telemetry.py` aligns its column schema per channel (`telecommand` vs `telemetry`) and the telemetry sidecar was regenerated — kills the "no rows matched" log spam. To restyle the PDF, edit `scripts/pipeline/report.py` only.
+**Last updated (work state):** Section 24 DONE — generated report is now a ditto copy of `Report Layout.docx` (decoded from the .docx XML): A4 page, Times, cover page with the template's "Visison Navigation Analysis Report" / "Image ID: <session>" / "Date:" block, then numbered 1..9 bold-14 heading "N. <Heading>", intro sentence (the "captured on <date>, at <time>" intro and the Left/Right camera captions keep their template underlines), per-section figure grids (full-width stacks, side-by-side pairs, preprocess = 2 pairs + full-width rectified, VO = pair + full-width localization) captioned "Figure N: …" below each image (numbering runs 1..25), and bold-headed Parameter/Value (or User Query/AI Response) tables with a 0.5pt grid; the first four sections keep the template's two trailing empty rows. `report.py` rewritten (IEEE title block/two columns/Roman headings/footer removed); `PdfBuilder.text` gained an `underline` flag; `scripts/bin/report.exe` rebuilt. Verified: 12 pages / 25 figures / 9 tables, .py and .exe byte-identical (356649). Sample: `15_Report/session_2026-09-15T05-45-52-432Z/Report_Layout_Sample.pdf`. Section 23 (IEEE style) superseded. §22 DONE — (22.1) all bottom-right `.exe` buttons removed (input/obsdet/safepath/distmap/navigation/sceneanalysis/data/telecommand/telemetry exe): the per-window ▶ buttons run the identical stage via `useStageRun`/`WindowRunButton`/`ConsoleResultModal`. `PipelineRunButton`, the Obs. Det. bespoke `runResult` modal + `handleRunDetection`, and `useTelemetryRunner` deleted (telemetry refresh still via panel ▶). (22.2) Telemetry tab "Refresh Logs" sidebar now has **Telecommand / Telemetry headings with TC1–3 / TM1–3 checkboxes** that filter rows 1–3 of each log table (rows beyond 3 always shown). (22.3) Data tab sidebar made the same style: **every possible window sub-heading is now always listed** under each tab heading (via module `WINDOW_ITEMS`), master tab checkbox kept, collapse chevron removed. ESLint down to 10 pre-existing `set-state-in-effect` (2 preserve-memo errors gone). (22.4) Telemetry page-level `Telemetry & Telecommand` `section__title` heading removed (table `panel__title` headings kept). (22.5) Topbar **Run Algorithms button kept its name but now runs all tabs sequentially** (input copy → preprocess → obstacleDetection → occupancyGrid → safePath → distanceMap → navigation → sceneAnalysis → telemetry×2 → roverHealth), single runSignal bump + pass/fail summary toast, "Running…" while busy. Prior: §21 — Data-tab sub-window ▶ run buttons → checkboxes for report sub-heading include/exclude. `npm run build` passes; lint = only pre-existing errors.
 
 ---
 
@@ -297,6 +297,7 @@ Python script** for its own tab via the ScriptRunner IPC bridge.
 | 14 | Data tab — tab-level report summary | Done  |
 | 15 | Save-As dialog for report generation | Done |
 | 16 | Nav rail reorder (Data at end)  | Done   |
+| 17 | Data-tab sub-heading checkboxes in report | Done |
 
 ---
 
@@ -796,5 +797,310 @@ GitHub release `v0.0.0` (created during this experiment) still contains the
 **self-contained** installer — do not distribute it; rebuild the installer
 from `main` if a release is needed. `better-sqlite3` and
 `electron/server/*` are fully removed from the tree / node_modules / lockfile.
+
+---
+
+## §20 — Fullscreen fix, per-window triangle run buttons, Data-tab window subtabs (2026-09-10)
+
+Three requested UI changes implemented in `src/VNSApp.jsx` + `src/App.css` + `src/hooks/useWorkspace.js`:
+
+**20.1 Fullscreen blank white space fixed.** Root cause: `.vns` used
+`height: 100%` but no ancestor has a definite height (`#root`/`body` only
+have `min-height: 100vh`), so percentage height resolved to auto → app
+shrank to content height → white band below. Both theme blocks of `.vns` in
+`App.css` changed to `height: 100vh; min-height: 660px; box-sizing:
+border-box;`. No `electron/main.cjs` fullscreen handling changed.
+
+**20.2 Triangle "run" buttons on every window.** Extracted the pipeline-run
+logic out of `PipelineRunButton` into a reusable `useStageRun` hook and a
+shared `ConsoleResultModal`; added a new `WindowRunButton` component (small
+▶ in each panel's header tools). Every `ResultPanel` / `DataTablePanel` /
+`NavFeedPanel` instance across the tabs now accepts a `run` prop
+`{ actionId, hint, title, onDone }` + `pushToast`, mapping each window to
+its owning stage:
+
+- Obs. Det.: left/preprocessed → `preprocess`; mask/bboxes →
+  `obstacleDetection` (hint left/right)
+- Safe Path: pre → `preprocess`; obstacle → `obstacleDetection`;
+  occupancy → `occupancyGrid`; safepath → `safePath`
+- Dist. Map: all four → `distanceMap`
+- Navigation: all three (incl. sim video) → `navigation`
+- Scene Analysis: navcam → `preprocess`; obstacle → `safePath`
+- Telemetry: telecommand → `telemetry` (hint `telecommand`); telemetry →
+  `telemetry` (hint `telemetry`)
+- Input tab keeps its existing Play triangles (raw-feed toggle, not a stage run)
+
+Backing change in `useWorkspace.js`: added `obstacleDetection` and
+`telemetry` entries to the `usePipelineRunner` map (telemetry reuses
+`window.workspace.runTelemetry(inputHint)`). `electron`/`preload` were already
+exposing all the needed run functions — no IPC changes required.
+
+**20.3 Data-tab sidebar: window subtabs, All Windows gallery removed.** The
+"All Windows" tile grid (and its `IMAGE_MAP` / `allWindows` memos, and the now
+unused `ppImages` state + `preprocessedCapture` prop that only fed it) is
+gone. Each "Tabs to include in report" checkbox is now a collapsible group
+(chevron toggle) with its produced windows listed underneath as sub-rows,
+each with its own ▶ that runs that window's stage via `runDataWindow` →
+`usePipelineRunner`. Windows appear only if actually produced this session:
+input → Left/Right; obsdet → mask/bboxes; safepath → occupancy/safe path;
+distmap → distances/heatmap/3D/elevation; navigation → last/current;
+sceneanalysis → navcam 1/2 + safe path; telemetry → telecommand/telemetry logs.
+New CSS: `.share-group*` / `.share-window*` (both light + dark).
+
+**Verify:** `npm run build` passes. Lint shows only pre-existing errors
+(React-Compiler set-state-in-effect / preserve-manual-memoization on
+`navImages.current` ref access and other files) — nothing new introduced.
+Dev check: `.\start-dev.ps1`, log in as admin, hit Run Algorithms, toggle
+tabs/screens and the per-window ▶ buttons, and confirm Data sidebar subtab
+groups + fullscreen has no bottom gap.
+
+---
+
+## §21 — DONE: Data-tab sub-heading checkboxes instead of run buttons (2026-09-14)
+
+User request: under "Tabs to include in report" in the Data tab, the
+sub-window rows should have a **checkbox to choose whether each sub-heading
+goes into the report** — NOT the ▶ run button added in §20.3.
+
+**Goal:** each collapsible tab group's sub-rows are checkboxes (default all
+checked = all sub-headings included). Toggling one excludes just that
+sub-heading (its image / table section) from "Generate Report". The data.exe
+PipelineRunButton in the btn-row stays.
+
+### Completed in `src/VNSApp.jsx` (DataScreen):
+1. `windowItems` memo — each window carries `produces: [captionOrHeading...]`
+   naming the exact report section it contributes (input-left → `["Left Image"]`,
+   tel-telecommand → `["Telemetry — Telecommand Log"]`, distmap-elevation →
+   `["Relative Elevation Map"]` which is the true report caption).
+2. `windowChecked` state + `winIncluded(w)` (`windowChecked[w.id] !== false` →
+   default included) + `toggleWindowCheck(id)`.
+3. **`runDataWindow` useCallback deleted** + the `usePipelineRunner()` line in
+   DataScreen removed (run buttons gone; per-window runs removed per design).
+4. **`handleGenerateReport` rewritten** — per checked tab it filters the built
+   sections by the group's windows:
+   - `onProduced` = concat of `produces` from windows where `winIncluded(w)`;
+     `allProduced` = from all windows of that tab.
+   - sections with `images`: keep images whose `caption ∈ onProduced`; drop the
+     section if none remain.
+   - sections with no images: if `sec.heading ∈ allProduced` keep only when
+     `∈ onProduced` (the two telemetry tables); otherwise keep (tab-scoped
+     tables like Input props / Nav props / detection tables).
+   - checked tab with zero sections → existing "Nothing captured for this tab
+     yet — run Run Algorithms first." note style.
+5. **Sidebar JSX** — sub-row is now `<label className="share-window">` +
+   `Checkbox checked={winIncluded(w)} onChange={() => toggleWindowCheck(w.id)}`
+   + `<span className="share-window__name">`. No run button.
+6. **safepath `build()`** — occupancy grid image prepended to `images`
+   (`gridImg` → caption "Occupancy Grid Map") so its sub-heading checkbox is
+   meaningful; `gridImg` added to `tabItems`' dep array.
+7. **CSS** (`App.css`, both theme blocks) — `.share-window__run*` rules
+   removed (dead); `.share-window` is now a cursor-pointer label and reuses
+   the existing `Checkbox`/`.chk` styling.
+
+### Verified
+- `npm run build` passes. ESLint = 12 pre-existing-only errors (10 ×
+  `set-state-in-effect` + 2 × `preserve-manual-memoization` on `tabItems` /
+  `windowItems` `navImages.current` ref access) — no new errors introduced
+  (diff vs HEAD = 0 new; HEAD's 11 predates the uncommitted §21 partial work).
+- Sidebar sub-headings are all-default-checked now; unchecking one excludes
+  exactly that caption/heading from the Data report; telemetry tables are the
+  only heading-gated (non-image) sections, so unchecking Telecommand/Telemetry
+  removes just that table.
+
+Note: `windowChecked` default (absent) = included, so existing users' reports
+are unchanged until they uncheck something. Headers/§20 stay accurate for the
+shipped state except the §20.3 mention that each sub-row has a run button — §21
+supersedes that.
+
+---
+
+## §22 — DONE: exe buttons removed, Telemetry TC/TM row selector (2026-09-14)
+
+Two UI decisions from live review. Both renderer-only (`src/VNSApp.jsx`,
+`src/hooks/useWorkspace.js`, `src/App.css`); Vite HMR applies them live.
+
+### 22.1 Bottom-right `.exe` buttons removed (per-window ▶ covers them)
+
+The tab sidebars' bottom-right run buttons — `input.exe` (preprocess),
+`obsdet.exe` (obstacleDetection), `safepath.exe` (safePath), `distmap.exe`
+(distanceMap), `navigation.exe` (navigation), `sceneanalysis.exe`
+(sceneAnalysis), `data.exe` (occupancyGrid) — are **gone**. Every pipeline
+action they fired is the same `usePipelineRunner` → IPC → ScriptRunner stage
+that the per-window ▶ buttons (§20.2, `WindowRunButton` +
+`ConsoleResultModal` + all the friendly no-root/script-not-found error
+messages via `useStageRun`) already launch, and the shared modal shows the
+same stdout/stderr. So removal loses no coverage.
+
+Deleted along the way (all become dead code):
+- `PipelineRunButton` component (was the exe-button wrapper).
+- Obs. Det.'s bespoke `runResult` console modal + `handleRunDetection` +
+  `running`/`runResult` state (the ▶ on mask/bboxes covers detection now).
+- `InputScreen`'s now-unused `pushToast` prop (its only consumer was
+  `input.exe`).
+- `useTelemetryRunner` hook in `useWorkspace.js` + its import/call/prop
+  (`telemetryRunner`) — Telemetry refresh still happens via the two panels'
+  ▶ buttons (`actionId: "telemetry", hint: telecommand/telemetry`).
+
+### 22.2 Telemetry sidebar: Telecommand / Telemetry headings with TC/TM row checkboxes
+
+The "Refresh Logs" box no longer has `telecommand.exe` / `telemetry.exe`
+buttons. Each is now a **heading** with numbered **sub-heading checkboxes**:
+- **Telecommand** → TC1, TC2, TC3
+- **Telemetry** → TM1, TM2, TM3
+
+Function: checking/unchecking a sub-heading includes/excludes that **row of
+the corresponding log table** (TC<i> ↔ row *i* of the Telecommand table,
+TM<i> ↔ row *i* of the Telemetry table). Rows 1–3 are toggleable; rows beyond
+the third are not bound to a sub-heading and always stay visible.
+`tcChecked`/`tmChecked` maps keyed by `imgNo` default to included (absent =
+true), so nothing changes until the user unchecks.
+
+Implementation: `filter((r) => r.imgNo > 3 || tcChecked[r.imgNo] !== false)`
+inside the `telecommandTable`/`telemetryTable` `useMemo`s (deps now include
+the checked maps). Sidebar reuses the Data sidebar's `.share-group` /
+`.share-window` markup + `Checkbox`; new `.share-group__heading` style (both
+theme blocks) for the uppercase group label.
+
+### 22.3 Data sidebar: sub-headings always listed (Telemetry-style)
+
+Follow-up: "do the same as the Telemetry tab in the Data tab — headings of
+every tab, and under each heading sub-headings to select whether that tab's
+**window** goes into the report." User chose to **keep the master tab
+checkbox** + window checkboxes (asked via question).
+
+- `windowItems` (a production-gated `useMemo` in `DataScreen`) is now a
+  **module-level `WINDOW_ITEMS` const** listing every possible sub-heading per
+  tab (input→Left/Right Image; obsdet→Mask/BBoxes; safepath→Occupancy Grid/
+  Safe Path; distmap→Distances/Distance Map/3D View/Relative Elevation;
+  navigation→Last/Current; sceneanalysis→NavCam 1/2 + Safe Path; telemetry→
+  Telecommand/Telemetry Log), each carrying its `produces` captions.
+- **Sub-headings now always render** — the collapse chevron (`openGroups`,
+  `toggleWindowGroup`, `.share-group__toggle` CSS) is gone. Every tab heading
+  (master checkbox + name) sits above its window checkboxes at all times.
+- Unproduced windows contribute nothing to the PDF (their captions simply
+  never appear in the built sections); the §21 `handleGenerateReport` filter
+  logic is unchanged, only sourced from `WINDOW_ITEMS`.
+- **Delete side-effect:** dropping the `windowItems` memo removed both
+  `preserve-manual-memoization` lint errors — ESLint is now down to the 10
+  pre-existing `set-state-in-effect` (best count seen).
+
+### 22.4 Telemetry screen header removed (follow-up)
+
+Aside: the "big black heading" above the tables was the page-level
+`<h1 class="section__title">Telemetry & Telecommand</h1>` + hint, not the
+`panel__title` table headings. An initial attempt removed the table titles via
+a `hideTitle` prop on `DataTablePanel` — **reverted** (user said "not the table
+headings"). Instead the Telemetry screen's `div.section__header` block was
+deleted. Grep confirms `section__title` no longer appears anywhere in `src/`
+(Telemetry was the last screen still using it).
+
+### 22.5 Topbar "Run Algorithms" -> "Run All Tabs" (sequential)
+
+Follow-up: the topbar CPU button used to only copy the selected raw images
+into a new `03_Input_Image` session ("Sent to Input" toast). It now runs
+**every tab's pipeline stage back to back**:
+
+1. **Input step** — same `runAlgorithms(left, right)` session-folder copy,
+   but only if `inputScreenRef.getSelectedRawPaths()` has a Left/Right picked;
+   otherwise the batch just re-runs the stages against the latest session
+   instead of erroring "Nothing selected".
+2. **Sequential stages** (`RUN_ALL_STAGES` const, order = dependency chain:
+   `preprocess` → `obstacleDetection` → `occupancyGrid` → `safePath` →
+   `distanceMap` → `navigation` → `sceneAnalysis` → `telemetry`(telecommand)
+   → `telemetry`(telemetry) → `roverHealth`, all `hint "left"` except the two
+   telemetry modes) via the same `usePipelineRunner` the per-window ▶ buttons
+   use.
+3. **One `setRunSignal` bump** at the end so every tab re-pulls the newest
+   output from disk, then a success/`N stage(s) failed: …` summary toast.
+
+Button label is now **Run All** (— "Running…" + disabled + green-tinted
+border while the batch is in flight via `.topbar__run-btn--active` /
+`:disabled`, both theme blocks). Per-window ▶ buttons unchanged.
+
+### 23 IEEE paper-style report format
+
+User: "i want the report to follow IEEE format" → chose **IEEE paper style**
+(journal-template): title/author/abstract block on page 1, two-column body
+below, Roman-numeral sections, Times family font, US Letter page.
+
+Rewrote `scripts/pipeline/report.py`'s layout engine:
+- **Page**: US Letter 612×792; IEEE margins (0.75" top/left, 0.5" right, 1" bottom);
+  two 3.5" columns with 0.25" gutter below the title block.
+- **Fonts**: base-14 Times family (Times-Roman / -Bold / -Italic / -BoldItalic)
+  replaces Helvetica everywhere; added `_TIMES`/`_TIMES_B` AFM width tables +
+  font-aware `_text_width()`; PdfBuilder now registers 4 fonts.
+- **Title block**: 24pt uppercase bold title, author line ("Vision Navigation
+  Software System"), italic session/date affiliation line, then a full-width
+  Abstract— / Index Terms— box (abstract synthesized from meta; index terms
+  from the section headings). No separate cover page.
+- **Body**: justified 10pt Times paragraphs, uppercase Roman-numeral
+  section headings (I., II., …); figures → "Fig. N." italic captions below
+  scaled to column width (max 150pt tall); tables → "TABLE N" bold + italic
+  caption ABOVE, 8pt Times, gray header row. Column/page flow via
+  `ensure()`/`advance()`; centred page-number footer bar.
+- `_wrap`/`_wrap_inline` (inline Abstract/Index-Terms flow) + `_draw_words`
+  justification helper added.
+- **Deploy**: rebuilt `scripts/bin/report.exe` via PyInstaller (installed
+  pyinstaller 6.22.2, Python 3.14.7) so the packaged app uses the new style.
+  Verified `.py` and `.exe` both generate a 3-page / 10-figure / 3-table PDF
+  from a real-session manifest; structure validated (Times fonts, 18 image
+  XObjects, xref OK). Sample copy: `15_Report/session_2026-09-15T05-45-52-432Z/IEEE_Sample.pdf`
+  (user's data folder — inspect to confirm look-and-feel).
+
+Note: manifest sections are flat `{heading, intro, images, imageNotes, text,
+table}` so reports use top-level Roman sections (I., II., …). No A./B.
+subsections are fabricated (the manifest carries no per-window subsection
+labels); the engine will render them if the manifest ever provides them.
+
+### 24 Report replaced by ditto copy of "Report Layout.docx"
+
+User supplied `C:\YousufVNS\Report Layout\Report Layout.docx` and asked for the
+generated report to be a **ditto copy**: same headings, image grids, sentences
+under the headings, with blanks filled from the session data. §23's IEEE style
+was scrapped in favour of reproducing this template.
+
+Decoded the .docx (unzipped + read document.xml/numbering.xml/rels):
+- **Page**: A4 (595.3 × 841.9 pt), margins 1.25" sides / 1" top+bottom,
+  Times New Roman (base-14 Times used), text width 415.3 pt.
+- **Cover (page 1, hard break after)**: "Visison Navigation Analysis Report"
+  20pt bold centred, "Image ID: <session>" 16pt bold centred, "Date: <date>"
+  14pt bold centred — verbatim from the template (incl. the template's
+  "Visison" spelling).
+- **9 numbered headings** (1. Input Image … 9. Scene Description) via
+  numId "12" → decimal "%1.", 14pt bold; intro sentence 11pt; "Figure N: …"
+  captions centred 11pt under each image; underlines kept where the template
+  has them (the "captured on <date>, at <time>" intro + the two NavCam camera
+  captions).
+- **Figure-grid shapes** per section: Input/Relative Elevation/Occupancy
+  Grid/Safe Path = stacked full-width figures; Preprocessing = two
+  side-by-side pairs + full-width rectified; Obstacle Detection & Distances =
+  two side-by-side pairs; Visual Odometry = one pair + full-width
+  localization; Scene Description = no figures. Figure numbers run 1..25.
+- **Property tables**: bold centred Parameter/Value header, data cells
+  centred (QA cells left-aligned), single 0.5 pt black grid, no header fill;
+  the first four sections keep the reference's two trailing empty rows.
+  Table-intro sentences ("The image properties are as follows:", etc.) come
+  from `TABLE_INTROS` when the manifest section has no `text`.
+- Removed IEEE leftovers: title/abstract block, Roman headings, two columns,
+  figure/table frames, page-number footer.
+
+Rewrote `scripts/pipeline/report.py` layout engine (PdfBuilder + image
+decoders unchanged; PdfBuilder.text gained an `underline` flag). Verified with
+a manifest mirroring `generateFullReport` from real session data →
+**12 pages, 25 figures, 9 tables**; `.py` and rebuilt `scripts/bin/report.exe`
+produce identical bytes (356649). Sample:
+`15_Report/session_2026-09-15T05-45-52-432Z/Report_Layout_Sample.pdf`. The
+electron side needs NO change — `generateFullReport` already feeds headings,
+intro sentences, captions and Property/QA tables.
+
+### Verified (all of §22)
+- `npm run build` passes (1787 modules). ESLint = 10 pre-existing-only
+  errors (all `set-state-in-effect`; the 2 `preserve-manual-memoization` on
+  `tabItems`/`windowItems` gone with the memo removal).
+- Dev check: `.\start-dev.ps1` was already up from §21 review; the app is
+  running on :5173. Verify tabs show no bottom-right exe buttons, the ▶ on
+  each window still runs + shows the console modal, Telemetry's Refresh Logs
+  box shows TC1–3 / TM1–3 that hide/show rows 1–3, and the Data sidebar lists
+  every tab's window checkboxes permanently under each heading.
 
 

@@ -5,7 +5,7 @@ import AdminPanel from "./auth/AdminPanel";
 import UserMenu from "./auth/UserMenu";
 import RoleRequestButton from "./auth/RoleRequestButton";
 import { AddScreenModal, CustomScreen, useCustomScreens } from "./CustomScreens";
-import { useWorkspaceRoot, useInputCaptureWatch, useLatestProperties, useRawImagesWatch, usePreprocessedImages, useObstacleDetection, useDistanceMap, useOccupancyGrid, usePredSafePath, useRoverHealthStatus, useInputImageLog, useWaypointsLog, useTelemetryLog, useTelecommandLog, useTelemetryRunner, usePipelineRunner, useNavigationImages, useNavigationProperties, useRosSimulationVideo, useSceneAnalysisQuery, useWindowFolder, useGenerateReport, useShareWindows, runAlgorithms } from "./hooks/useWorkspace";
+import { useWorkspaceRoot, useInputCaptureWatch, useLatestProperties, useRawImagesWatch, usePreprocessedImages, useObstacleDetection, useDistanceMap, useOccupancyGrid, usePredSafePath, useRoverHealthStatus, useInputImageLog, useWaypointsLog, useTelemetryLog, useTelecommandLog, usePipelineRunner, useNavigationImages, useNavigationProperties, useRosSimulationVideo, useSceneAnalysisQuery, useWindowFolder, useGenerateReport, useShareWindows, runAlgorithms } from "./hooks/useWorkspace";
 
 import {
   Play,
@@ -19,7 +19,6 @@ import {
   Sun,
   Moon,
   Pencil,
-  Check,
   Plus,
   Trash2,
   CheckCircle2,
@@ -238,6 +237,47 @@ const TELECOMMAND_COLUMNS = [
   { label: "Status", key: "status" },
 ];
 
+// Every possible sub-heading under a "Tabs to include in report" entry — one
+// row per window of that tab, always listed (produced or not). Each
+// `produces` array names the exact report image captions / section headings
+// that window contributes, so toggling a checkbox include/excludes just that
+// part of the PDF. A window that wasn't produced this session simply
+// contributes nothing to the report (its check only takes effect once the
+// output exists).
+const WINDOW_ITEMS = {
+  input: [
+    { id: "input-left", name: "Left Image", produces: ["Left Image"] },
+    { id: "input-right", name: "Right Image", produces: ["Right Image"] },
+  ],
+  obsdet: [
+    { id: "obsdet-mask", name: "Obstacle Pixel Mask", produces: ["Obstacle Pixel Mask"] },
+    { id: "obsdet-bboxes", name: "Obstacle BBoxes", produces: ["Obstacle BBoxes"] },
+  ],
+  safepath: [
+    { id: "safepath-occupancy", name: "Occupancy Grid Map", produces: ["Occupancy Grid Map"] },
+    { id: "safepath-safe", name: "Predicted Safe Path", produces: ["Predicted Safe Path"] },
+  ],
+  distmap: [
+    { id: "distmap-distances", name: "Obstacle Distances", produces: ["Obstacle Distances"] },
+    { id: "distmap-heatmap", name: "Distance Map", produces: ["Distance Map"] },
+    { id: "distmap-threed", name: "3D View", produces: ["3D View"] },
+    { id: "distmap-elevation", name: "Relative Elevation", produces: ["Relative Elevation Map"] },
+  ],
+  navigation: [
+    { id: "nav-last", name: "Last Image", produces: ["Navigation — Last Image"] },
+    { id: "nav-current", name: "Current Image", produces: ["Navigation — Current Image"] },
+  ],
+  sceneanalysis: [
+    { id: "scene-navcam1", name: "NavCam Imagery 1", produces: ["NavCam Imagery 1"] },
+    { id: "scene-navcam2", name: "NavCam Imagery 2", produces: ["NavCam Imagery 2"] },
+    { id: "scene-safe", name: "Obstacle with Safe Path", produces: ["Obstacle with Safe Path"] },
+  ],
+  telemetry: [
+    { id: "tel-telecommand", name: "Telecommand Log", produces: ["Telemetry — Telecommand Log"] },
+    { id: "tel-telemetry", name: "Telemetry Log", produces: ["Telemetry — Log"] },
+  ],
+};
+
 /* ================================================================
    Toast / alert framework — used by Share & Generate Report so the
    "explicit, context-specific alerts" requirement is a real thing
@@ -295,9 +335,7 @@ function Checkbox({ checked, onChange, title }) {
       onClick={() => onChange(!checked)}
       title={title || "Select for sharing"}
       aria-pressed={checked}
-    >
-      {checked && <Check size={11} strokeWidth={3} />}
-    </button>
+    />
   );
 }
 
@@ -425,7 +463,7 @@ async function runShareWindows(shareWindows, pushToast, items) {
      onDone      — async callback fired after a successful run so the tab
                     can reload its panels (default none)
 */
-function PipelineRunButton({ actionId, label, runningLabel, title, hint = "left", pushToast, onDone }) {
+function useStageRun({ actionId, label, title, hint = "left", pushToast, onDone }) {
   const pipeline = usePipelineRunner();
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState(null);
@@ -435,14 +473,14 @@ function PipelineRunButton({ actionId, label, runningLabel, title, hint = "left"
     if (!pipeline.available) {
       pushToast?.({
         type: "error",
-        title: title || label,
+        title: title || label || actionId,
         message: "Pipeline execution is only available in the desktop app.",
       });
       return;
     }
     setRunning(true);
     setRunResult(null);
-    const runTitle = title || label;
+    const runTitle = title || label || actionId;
     pushToast?.({ type: "info", title: runTitle, message: "Running script..." });
     try {
       const result = await pipeline.run(actionId, hint);
@@ -475,52 +513,63 @@ function PipelineRunButton({ actionId, label, runningLabel, title, hint = "left"
     }
   };
 
+  return { running, runResult, dismissResult: () => setRunResult(null), handleRun };
+}
+
+/* Shared console modal for any run result (big Run buttons + window
+   triangles both render this so the state of each stays consistent). */
+function ConsoleResultModal({ runResult, title, onClose }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal--console" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__bar">
+          <span className="modal__title">{title} Output — {runResult.ok ? "completed" : "failed"}</span>
+          <button className="modal__close" onClick={onClose}><X size={15} /></button>
+        </div>
+        <div className="modal__stage modal__stage--console">
+          <pre className="console">
+            <span className="dim">script : {runResult.script || "(none)"}</span>{"\n"}
+            <span className={runResult.ok ? "ok" : "err"}>
+              status : {runResult.ok ? "success" : "failed"}{runResult.error ? ` — ${runResult.error}` : ""}
+            </span>{"\n"}
+            <span className="dim">input  : {runResult.inputImage || "(none resolved)"}</span>{"\n"}
+            <span className="dim">output : {runResult.outputDir || "(none)"}</span>{"\n"}
+            {"\n"}
+            {runResult.stdout ? (
+              <>
+                <span className="dim">--- stdout ---</span>{"\n"}
+                {runResult.stdout}
+                {"\n"}
+              </>
+            ) : null}
+            {runResult.error === "no-root" ? (
+              <>
+                <span className="err">No Workspace Folder is selected.</span>{"\n"}
+                <span className="dim">Click 'Select Folder' at the top of the Input tab to choose your vns-app data folder, then run the script again.</span>
+              </>
+            ) : runResult.stderr ? (
+              <>
+                <span className="err">--- stderr ---</span>{"\n"}
+                <span className="err">{runResult.stderr}</span>
+                {"\n"}
+              </>
+            ) : null}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WindowRunButton({ actionId, title, hint = "left", pushToast, onDone }) {
+  const { running, runResult, dismissResult, handleRun } = useStageRun({ actionId, title, hint, pushToast, onDone });
+
   return (
     <>
-      <button className="btn btn-primary" onClick={handleRun} disabled={running}>
-        {running ? runningLabel || "Running..." : label}
-      </button>
-
-      {runResult && (
-        <div className="modal-overlay" onClick={() => setRunResult(null)}>
-          <div className="modal modal--console" onClick={(e) => e.stopPropagation()}>
-            <div className="modal__bar">
-              <span className="modal__title">{title || label} Output — {runResult.ok ? "completed" : "failed"}</span>
-              <button className="modal__close" onClick={() => setRunResult(null)}><X size={15} /></button>
-            </div>
-            <div className="modal__stage modal__stage--console">
-              <pre className="console">
-                <span className="dim">script : {runResult.script || "(none)"}</span>{"\n"}
-                <span className={runResult.ok ? "ok" : "err"}>
-                  status : {runResult.ok ? "success" : "failed"}{runResult.error ? ` — ${runResult.error}` : ""}
-                </span>{"\n"}
-                <span className="dim">input  : {runResult.inputImage || "(none resolved)"}</span>{"\n"}
-                <span className="dim">output : {runResult.outputDir || "(none)"}</span>{"\n"}
-                {"\n"}
-                {runResult.stdout ? (
-                  <>
-                    <span className="dim">--- stdout ---</span>{"\n"}
-                    {runResult.stdout}
-                    {"\n"}
-                  </>
-                ) : null}
-                {runResult.error === "no-root" ? (
-                  <>
-                    <span className="err">No Workspace Folder is selected.</span>{"\n"}
-                    <span className="dim">Click 'Select Folder' at the top of the Input tab to choose your vns-app data folder, then run the script again.</span>
-                  </>
-                ) : runResult.stderr ? (
-                  <>
-                    <span className="err">--- stderr ---</span>{"\n"}
-                    <span className="err">{runResult.stderr}</span>
-                    {"\n"}
-                  </>
-                ) : null}
-              </pre>
-            </div>
-          </div>
-        </div>
-      )}
+      <IconBtn title={`Run ${title || actionId}`} active={running} onClick={handleRun}>
+        <Play size={12} />
+      </IconBtn>
+      {runResult && <ConsoleResultModal runResult={runResult} title={title || actionId} onClose={dismissResult} />}
     </>
   );
 }
@@ -710,12 +759,14 @@ function SceneAnalysisScreen({ setExpandedContent, pushToast, inputCapture, pred
               onSelectChange={(v) => setSelected((s) => ({ ...s, navcam: v }))}
               activeWindow={activeWindow} onFocus={setActiveWindow}
               images={navcamImages}
-              onExpand={() => setExpandedContent({ title: "NavCam Imagery", uri: navcamImages[0] || null })} />
+              onExpand={() => setExpandedContent({ title: "NavCam Imagery", uri: navcamImages[0] || null })}
+              run={{ actionId: "preprocess", hint: "left", title: "Preprocess", onDone: loadAll }} pushToast={pushToast} />
             <ResultPanel id="obstacle" title="Obstacle with Safe path" selected={selected.obstacle}
               onSelectChange={(v) => setSelected((s) => ({ ...s, obstacle: v }))}
               activeWindow={activeWindow} onFocus={setActiveWindow}
               imageSrc={safePathImg}
-              onExpand={() => setExpandedContent({ title: "Obstacle with Safe path", uri: safePathImg || null })} />
+              onExpand={() => setExpandedContent({ title: "Obstacle with Safe path", uri: safePathImg || null })}
+              run={{ actionId: "safePath", hint: "left", title: "Safe Path", onDone: loadAll }} pushToast={pushToast} />
           </div>
 
           <section
@@ -797,15 +848,6 @@ function SceneAnalysisScreen({ setExpandedContent, pushToast, inputCapture, pred
           </section>
 
           <div className="btn-row">
-            <PipelineRunButton
-              actionId="sceneAnalysis"
-              label="sceneanalysis.exe"
-              runningLabel="Analyzing..."
-              title="Scene Analysis"
-              hint="left"
-              pushToast={pushToast}
-              onDone={loadAll}
-            />
             <button className="btn" onClick={handleReport}>Generate Report</button>
             <button className="btn btn-primary" onClick={handleShare}>Share</button>
           </div>
@@ -815,7 +857,7 @@ function SceneAnalysisScreen({ setExpandedContent, pushToast, inputCapture, pred
   );
 }
 /* ---------------- DataTablePanel — real data table used by the Data screen ---------------- */
-function DataTablePanel({ id, title, table, showNav, onPrev, onNext, selected, onSelectChange, activeWindow, onFocus, onExpand, fit }) {
+function DataTablePanel({ id, title, table, showNav, onPrev, onNext, selected, onSelectChange, activeWindow, onFocus, onExpand, fit, run, pushToast }) {
   return (
     <section className={`panel data-table-panel${fit ? " data-table-panel--fit" : ""}${activeWindow === id ? " panel--focused" : ""}`} onMouseDown={() => onFocus(id)}>
       <header className="panel__bar">
@@ -827,6 +869,7 @@ function DataTablePanel({ id, title, table, showNav, onPrev, onNext, selected, o
         <Checkbox checked={selected} onChange={onSelectChange} />
         <h3 className="panel__title">{title}</h3>
         <div className="panel__tools">
+          {run && <WindowRunButton actionId={run.actionId} title={run.title || title} hint={run.hint} onDone={run.onDone} pushToast={pushToast} />}
           <IconBtn title="Expand" onClick={onExpand}>
             <Maximize2 size={12} />
           </IconBtn>
@@ -864,7 +907,7 @@ function DataTablePanel({ id, title, table, showNav, onPrev, onNext, selected, o
 }
 
 /* ---------------- Navigation screen panel (no prev arrow; checkbox only on the main feed) ---------------- */
-function NavFeedPanel({ id, title, onAdvance, showCheckbox, selected, onSelectChange, activeWindow, onFocus, onExpand, compact, imageSrc, videoSrc }) {
+function NavFeedPanel({ id, title, onAdvance, showCheckbox, selected, onSelectChange, activeWindow, onFocus, onExpand, compact, imageSrc, videoSrc, run, pushToast }) {
   const isReal = !!(imageSrc || videoSrc);
   return (
     <section className={`panel${compact ? " panel--compact" : ""}${activeWindow === id ? " panel--focused" : ""}`} onMouseDown={() => onFocus(id)}>
@@ -872,6 +915,7 @@ function NavFeedPanel({ id, title, onAdvance, showCheckbox, selected, onSelectCh
         {showCheckbox && <Checkbox checked={selected} onChange={onSelectChange} />}
         <h3 className="panel__title">{title}</h3>
         <div className="panel__tools">
+          {run && <WindowRunButton actionId={run.actionId} title={run.title || title} hint={run.hint} onDone={run.onDone} pushToast={pushToast} />}
           <IconBtn title="Expand" onClick={onExpand}>
             <Maximize2 size={12} />
           </IconBtn>
@@ -915,6 +959,8 @@ function ResultPanel({
   frameIndex, // optional: controlled frame index, shared across tabs showing the same image set (e.g. Preprocessed Image on Obs. Det. + Safe Path)
   onFrameChange, // optional: setter for frameIndex — required together with frameIndex
   fit, // optional: 'contain' shows the whole image uncropped (letterboxed); defaults to the existing fill/crop behavior
+  run, // optional { actionId, hint, title, onDone } — renders a triangle run button in the header
+  pushToast,
 }) {
   const [internalFrame, setInternalFrame] = useState(0);
   const isControlled = frameIndex !== undefined && !!onFrameChange;
@@ -940,6 +986,7 @@ function ResultPanel({
         </button>
         <h3 className="panel__title">{title}</h3>
         <div className="panel__tools">
+          {run && <WindowRunButton actionId={run.actionId} title={run.title || title} hint={run.hint} onDone={run.onDone} pushToast={pushToast} />}
           <IconBtn title="Expand" onClick={onExpand}>
             <Maximize2 size={12} />
           </IconBtn>
@@ -1123,7 +1170,7 @@ function InputScreenHeader({ root, chooseRoot, available }) {
     </div>
   );
 }
-const InputScreen = forwardRef(function InputScreen({ setExpandedContent, pushToast, inputCapture, playSignal, runSignal, propertiesCapture, rawWatch, workspaceRoot, chooseWorkspaceRoot, workspaceAvailable }, ref) {
+const InputScreen = forwardRef(function InputScreen({ setExpandedContent, inputCapture, playSignal, runSignal, propertiesCapture, rawWatch, workspaceRoot, chooseWorkspaceRoot, workspaceAvailable }, ref) {
   const [activeWindow, setActiveWindow] = useState("main");
   const [panels, setPanels] = useState({
     camL: { title: "CAM - 01 - L", images: [], paths: [], index: 0, selected: true, playing: false },
@@ -1313,17 +1360,6 @@ const InputScreen = forwardRef(function InputScreen({ setExpandedContent, pushTo
         ))}
         <button className="propbar__add" onClick={addProperty}><Plus size={12} /> Add field</button>
       </div>
-      <div className="btn-row">
-        <PipelineRunButton
-          actionId="preprocess"
-          label="input.exe"
-          runningLabel="Preprocessing..."
-          title="Preprocess"
-          hint="left"
-          pushToast={pushToast}
-          onDone={loadCaptureAndProperties}
-        />
-      </div>
     </div>
   );
 });
@@ -1346,11 +1382,6 @@ function ObstacleDetectionScreen({ setExpandedContent, pushToast, inputCapture, 
   const [obsProps, setObsProps] = useState({ id: "", conf: "", type: "", height: "", p05: "" });
   const [obsSearchId, setObsSearchId] = useState("");
   const [rover, setRover] = useState({ distance: "", coords: "", p1: "", p2: "", p3: "" });
-  const [running, setRunning] = useState(false);
-
-  // Holds the last "Run Detection" script output (stdout/stderr + paths) so a
-  // modal can show exactly what the Python script printed.
-  const [runResult, setRunResult] = useState(null);
 
   // The actual Left/Right captured image (whatever Run Algorithms most
   // recently copied into 03_Input_Image) — same source as the NavCam panel
@@ -1421,45 +1452,6 @@ function ObstacleDetectionScreen({ setExpandedContent, pushToast, inputCapture, 
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runSignal]);
-
-  // "Run Detection" button — launches the bundled Python script (later a
-  // .exe) against the current input image, then refreshes this tab so any
-  // mask/bbox/obstacle files the script wrote show up immediately.
-  const handleRunDetection = async () => {
-    if (running) return;
-    const side = rawView === "Left" ? "left" : "right";
-    setRunning(true);
-    setRunResult(null);
-    pushToast({ type: "info", title: "Obstacle Detection", message: "Running detection script..." });
-    try {
-      const result = await window.workspace.runObstacleDetection(side);
-      if (!result) {
-        setRunResult({ ok: false, script: null, stdout: "", stderr: "No result returned from the main process.", error: "no-result" });
-        pushToast({ type: "error", title: "Obstacle Detection", message: "Detection failed: no result returned." });
-      } else if (result.ok) {
-        const which = result.script ? ` (${result.script})` : "";
-        pushToast({ type: "success", title: "Obstacle Detection", message: `Detection script completed${which}.` });
-        setRunResult(result);
-        await loadAll();
-      } else {
-        setRunResult(result);
-        pushToast({
-          type: "error",
-          title: "Obstacle Detection",
-          message: result?.error === "no-root"
-            ? "No Workspace Folder selected. Click 'Select Folder' at the top of the Input tab first."
-            : result?.error === "script-not-found"
-              ? `Detection script not found (${result.script}). Add it to scripts/ and set its fileName in electron/scriptRunner.cjs.`
-              : `Detection failed: ${result?.stderr || result?.error || "unknown error"}`,
-        });
-      }
-    } catch (err) {
-      setRunResult({ ok: false, script: null, stdout: "", stderr: String(err), error: "exception" });
-      pushToast({ type: "error", title: "Obstacle Detection", message: String(err) });
-    } finally {
-      setRunning(false);
-    }
-  };
 
   const jumpToObstacle = (idx) => {
     if (!obstacles.length) return;
@@ -1555,23 +1547,27 @@ function ObstacleDetectionScreen({ setExpandedContent, pushToast, inputCapture, 
             activeWindow={activeWindow} onFocus={setActiveWindow}
             imageSrc={rawView === "Left" ? capture.left : capture.right}
             onExpand={() => setExpandedContent({ title: rawView === "Left" ? "Left Image" : "Right Image", uri: (rawView === "Left" ? capture.left : capture.right) || null })}
-            toggleOptions={["Left", "Right"]} toggleValue={rawView} onToggleChange={setRawView} />
+            toggleOptions={["Left", "Right"]} toggleValue={rawView} onToggleChange={setRawView}
+            run={{ actionId: "preprocess", hint: "left", title: "Preprocess", onDone: loadAll }} pushToast={pushToast} />
           <ResultPanel id="preprocessed" title="Preprocessed Image" selected={selected.preprocessed}
             onSelectChange={(v) => setSelected((s) => ({ ...s, preprocessed: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             images={ppImages}
             frameIndex={ppFrameIndex} onFrameChange={setPpFrameIndex}
-            onExpand={() => setExpandedContent({ title: "Preprocessed Image", uri: ppImages[Math.min(ppFrameIndex, ppImages.length - 1)] || null })} />
+            onExpand={() => setExpandedContent({ title: "Preprocessed Image", uri: ppImages[Math.min(ppFrameIndex, ppImages.length - 1)] || null })}
+            run={{ actionId: "preprocess", hint: rawView === "Left" ? "left" : "right", title: "Preprocess", onDone: loadAll }} pushToast={pushToast} />
           <ResultPanel id="mask" title="Obstacle Pixel Mask" selected={selected.mask}
             onSelectChange={(v) => setSelected((s) => ({ ...s, mask: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             images={maskImg ? [maskImg] : undefined}
-            onExpand={() => setExpandedContent({ title: "Obstacle Pixel Mask", uri: maskImg || null })} />
+            onExpand={() => setExpandedContent({ title: "Obstacle Pixel Mask", uri: maskImg || null })}
+            run={{ actionId: "obstacleDetection", hint: rawView === "Left" ? "left" : "right", title: "Obstacle Detection", onDone: loadAll }} pushToast={pushToast} />
           <ResultPanel id="bboxes" title="Obstacle BBoxes" selected={selected.bboxes}
             onSelectChange={(v) => setSelected((s) => ({ ...s, bboxes: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             images={bboxImg ? [bboxImg] : undefined}
-            onExpand={() => setExpandedContent({ title: "Obstacle BBoxes", uri: bboxImg || null })} />
+            onExpand={() => setExpandedContent({ title: "Obstacle BBoxes", uri: bboxImg || null })}
+            run={{ actionId: "obstacleDetection", hint: rawView === "Left" ? "left" : "right", title: "Obstacle Detection", onDone: loadAll }} pushToast={pushToast} />
         </div>
 
         <aside className="sidepanel">
@@ -1626,58 +1622,11 @@ function ObstacleDetectionScreen({ setExpandedContent, pushToast, inputCapture, 
           </PropBox>
 
           <div className="btn-row">
-            <button className="btn btn-primary" onClick={handleRunDetection} disabled={running}>
-              {running ? "Running..." : "obsdet.exe"}
-            </button>
-          </div>
-
-          <div className="btn-row">
             <button className="btn" onClick={handleReport}>Generate Report</button>
             <button className="btn btn-primary" onClick={handleShare}>Share</button>
           </div>
         </aside>
       </div>
-
-      {runResult && (
-        <div className="modal-overlay" onClick={() => setRunResult(null)}>
-          <div className="modal modal--console" onClick={(e) => e.stopPropagation()}>
-            <div className="modal__bar">
-              <span className="modal__title">Detection Output — {runResult.ok ? "completed" : "failed"}</span>
-              <button className="modal__close" onClick={() => setRunResult(null)}><X size={15} /></button>
-            </div>
-            <div className="modal__stage modal__stage--console">
-              <pre className="console">
-                <span className="dim">script : {runResult.script || "(none)"}</span>{"\n"}
-                <span className={runResult.ok ? "ok" : "err"}>
-                  status : {runResult.ok ? "success" : "failed"}{runResult.error ? ` — ${runResult.error}` : ""}
-                </span>{"\n"}
-                <span className="dim">input  : {runResult.inputImage || "(none resolved)"}</span>{"\n"}
-                <span className="dim">output : {runResult.outputDir || "(none)"}</span>{"\n"}
-                {"\n"}
-                {runResult.stdout ? (
-                  <>
-                    <span className="dim">--- stdout ---</span>{"\n"}
-                    {runResult.stdout}
-                    {"\n"}
-                  </>
-                ) : null}
-                {runResult.error === "no-root" ? (
-                  <>
-                    <span className="err">No Workspace Folder is selected.</span>{"\n"}
-                    <span className="dim">Click 'Select Folder' at the top of the Input tab to choose your vns-app data folder, then run the detection again.</span>
-                  </>
-                ) : runResult.stderr ? (
-                  <>
-                    <span className="err">--- stderr ---</span>{"\n"}
-                    <span className="err">{runResult.stderr}</span>
-                    {"\n"}
-                  </>
-                ) : null}
-              </pre>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1909,22 +1858,26 @@ function SafePathScreen({ setExpandedContent, pushToast, inputCapture, propertie
             images={preView === "Pre-processed" ? ppImages : undefined}
             frameIndex={ppFrameIndex} onFrameChange={setPpFrameIndex}
             onExpand={() => setExpandedContent({ title: preView === "Pre-processed" ? "Preprocessed Image" : preView === "Left" ? "Left Image" : "Right Image", uri: (preView === "Pre-processed" ? ppImages[Math.min(ppFrameIndex, ppImages.length - 1)] : preView === "Left" ? capture.left : capture.right) || null })}
-            toggleOptions={["Left", "Right", "Pre-processed"]} toggleValue={preView} onToggleChange={setPreView} />
+            toggleOptions={["Left", "Right", "Pre-processed"]} toggleValue={preView} onToggleChange={setPreView}
+            run={{ actionId: "preprocess", hint: preView === "Right" ? "right" : "left", title: "Preprocess", onDone: loadAll }} pushToast={pushToast} />
           <ResultPanel id="obstacle" title="Obstacle Detection" selected={selected.obstacle}
             onSelectChange={(v) => setSelected((s) => ({ ...s, obstacle: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             images={[maskImg, bboxImg].filter(Boolean)}
-            onExpand={() => setExpandedContent({ title: "Obstacle Detection", uri: maskImg || bboxImg || null })} />
+            onExpand={() => setExpandedContent({ title: "Obstacle Detection", uri: maskImg || bboxImg || null })}
+            run={{ actionId: "obstacleDetection", hint: "left", title: "Obstacle Detection", onDone: loadAll }} pushToast={pushToast} />
           <ResultPanel id="occupancy" title="Occupancy Grid Map" selected={selected.occupancy}
             onSelectChange={(v) => setSelected((s) => ({ ...s, occupancy: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             imageSrc={gridImg}
-            onExpand={() => setExpandedContent(gridImg ? { title: "Occupancy Grid Map", uri: gridImg } : { title: "Occupancy Grid Map", uri: null })} />
+            onExpand={() => setExpandedContent(gridImg ? { title: "Occupancy Grid Map", uri: gridImg } : { title: "Occupancy Grid Map", uri: null })}
+            run={{ actionId: "occupancyGrid", hint: "left", title: "Occupancy Grid", onDone: loadAll }} pushToast={pushToast} />
           <ResultPanel id="safepath" title="Predicted Safe Path" selected={selected.safepath}
             onSelectChange={(v) => setSelected((s) => ({ ...s, safepath: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             imageSrc={safePathImg}
-            onExpand={() => setExpandedContent({ title: "Predicted Safe Path", uri: safePathImg || null })} />
+            onExpand={() => setExpandedContent({ title: "Predicted Safe Path", uri: safePathImg || null })}
+            run={{ actionId: "safePath", hint: "left", title: "Safe Path", onDone: loadAll }} pushToast={pushToast} />
         </div>
 
         <aside className="sidepanel">
@@ -2000,15 +1953,6 @@ function SafePathScreen({ setExpandedContent, pushToast, inputCapture, propertie
           </PropBox>
 
           <div className="btn-row">
-            <PipelineRunButton
-              actionId="safePath"
-              label="safepath.exe"
-              runningLabel="Computing..."
-              title="Safe Path"
-              hint="left"
-              pushToast={pushToast}
-              onDone={loadAll}
-            />
             <button className="btn" onClick={handleReport}>Generate Report</button>
             <button className="btn btn-primary" onClick={handleShare}>Share</button>
           </div>
@@ -2155,23 +2099,27 @@ function DistanceMapScreen({ setExpandedContent, pushToast, roverHealthCapture, 
             onSelectChange={(v) => setSelected((s) => ({ ...s, distances: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             imageSrc={images.obstacleDistancesImg}
-            onExpand={() => setExpandedContent({ title: "Obstacle Distances", uri: images.obstacleDistancesImg || null })} />
+            onExpand={() => setExpandedContent({ title: "Obstacle Distances", uri: images.obstacleDistancesImg || null })}
+            run={{ actionId: "distanceMap", hint: "left", title: "Distance Map", onDone: loadAll }} pushToast={pushToast} />
           <ResultPanel id="heatmap" title="Distance Map" selected={selected.heatmap}
             onSelectChange={(v) => setSelected((s) => ({ ...s, heatmap: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             imageSrc={images.distanceMapImg}
-            onExpand={() => setExpandedContent({ title: "Distance Map", uri: images.distanceMapImg || null })} />
+            onExpand={() => setExpandedContent({ title: "Distance Map", uri: images.distanceMapImg || null })}
+            run={{ actionId: "distanceMap", hint: "left", title: "Distance Map", onDone: loadAll }} pushToast={pushToast} />
           <ResultPanel id="threed" title="3D View" selected={selected.threed}
             onSelectChange={(v) => setSelected((s) => ({ ...s, threed: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             imageSrc={images.view3dImg}
             fit="contain"
-            onExpand={() => setExpandedContent({ title: "3D View", uri: images.view3dImg || null })} />
+            onExpand={() => setExpandedContent({ title: "3D View", uri: images.view3dImg || null })}
+            run={{ actionId: "distanceMap", hint: "left", title: "Distance Map", onDone: loadAll }} pushToast={pushToast} />
           <ResultPanel id="elevation" title="Relative Elevation" selected={selected.elevation}
             onSelectChange={(v) => setSelected((s) => ({ ...s, elevation: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             imageSrc={images.elevationImg}
-            onExpand={() => setExpandedContent({ title: "Relative Elevation", uri: images.elevationImg || null })} />
+            onExpand={() => setExpandedContent({ title: "Relative Elevation", uri: images.elevationImg || null })}
+            run={{ actionId: "distanceMap", hint: "left", title: "Distance Map", onDone: loadAll }} pushToast={pushToast} />
         </div>
 
         <aside className="sidepanel">
@@ -2221,15 +2169,6 @@ function DistanceMapScreen({ setExpandedContent, pushToast, roverHealthCapture, 
           </PropBox>
 
           <div className="btn-row">
-            <PipelineRunButton
-              actionId="distanceMap"
-              label="distmap.exe"
-              runningLabel="Computing..."
-              title="Distance Map"
-              hint="left"
-              pushToast={pushToast}
-              onDone={loadAll}
-            />
             <button className="btn" onClick={handleReport}>Generate Report</button>
             <button className="btn btn-primary" onClick={handleShare}>Share</button>
           </div>
@@ -2300,17 +2239,20 @@ function NavigationScreen({ setExpandedContent, pushToast, navImagesCapture, nav
         <div className="stack">
           <NavFeedPanel id="last" title="Last image" compact
             imageSrc={navImages.last}
-            onAdvance={() => advanceFrame("last")} activeWindow={activeWindow} onFocus={setActiveWindow} onExpand={() => setExpandedContent({ title: "Last image", uri: navImages.last || terrainDataUri(31 + frames.last * 5) })} />
+            onAdvance={() => advanceFrame("last")} activeWindow={activeWindow} onFocus={setActiveWindow} onExpand={() => setExpandedContent({ title: "Last image", uri: navImages.last || terrainDataUri(31 + frames.last * 5) })}
+            run={{ actionId: "navigation", hint: "left", title: "Navigation", onDone: loadAll }} pushToast={pushToast} />
           <NavFeedPanel id="current" title="Current Image" compact
             imageSrc={navImages.current}
             onAdvance={() => advanceFrame("current")} activeWindow={activeWindow} onFocus={setActiveWindow}
-            onExpand={() => setExpandedContent({ title: "Current Image", uri: navImages.current || terrainDataUri(32 + frames.current * 5) })} />
+            onExpand={() => setExpandedContent({ title: "Current Image", uri: navImages.current || terrainDataUri(32 + frames.current * 5) })}
+            run={{ actionId: "navigation", hint: "left", title: "Navigation", onDone: loadAll }} pushToast={pushToast} />
         </div>
         <NavFeedPanel id="sim" title="Rover Simulation Video" showCheckbox
           videoSrc={rosVideo}
           selected={selected.sim} onSelectChange={(v) => setSelected((s) => ({ ...s, sim: v }))}
           onAdvance={() => advanceFrame("sim")} activeWindow={activeWindow} onFocus={setActiveWindow}
-          onExpand={() => setExpandedContent({ title: "Rover Simulation Video", uri: rosVideo ? undefined : terrainDataUri(33 + frames.sim * 5) })} />
+          onExpand={() => setExpandedContent({ title: "Rover Simulation Video", uri: rosVideo ? undefined : terrainDataUri(33 + frames.sim * 5) })}
+          run={{ actionId: "navigation", hint: "left", title: "Navigation", onDone: loadAll }} pushToast={pushToast} />
       </div>
       <div className="propbar">
         {properties.map((prop) => (
@@ -2320,17 +2262,6 @@ function NavigationScreen({ setExpandedContent, pushToast, navImagesCapture, nav
             onRemove={() => setProperties((props) => props.filter((p) => p.id !== prop.id))} />
         ))}
         <button className="propbar__add" onClick={addProperty}><Plus size={12} /> Add field</button>
-      </div>
-      <div className="btn-row">
-        <PipelineRunButton
-          actionId="navigation"
-          label="navigation.exe"
-          runningLabel="Localizing..."
-          title="Navigation"
-          hint="left"
-          pushToast={pushToast}
-          onDone={loadAll}
-        />
       </div>
     </div>
   );
@@ -2349,7 +2280,6 @@ function DataScreen({
   setExpandedContent,
   inputCapture,
   propertiesCapture,
-  preprocessedCapture,
   predSafePathCapture,
   inputImageLogCapture,
   obstacleDetectionCapture,
@@ -2393,7 +2323,6 @@ function DataScreen({
   // this screen.
   const [capture, setCapture] = useState({ left: null, right: null });
   const [imgProps, setImgProps] = useState({ path: "", size: "", resolution: "", timestamp: "", p05: "" });
-  const [ppImages, setPpImages] = useState([]);
   const [maskImg, setMaskImg] = useState(null);
   const [bboxImg, setBboxImg] = useState(null);
   const [gridImg, setGridImg] = useState(null);
@@ -2441,10 +2370,6 @@ function DataScreen({
         });
       }
     }
-    if (preprocessedCapture?.available) {
-      const images = await preprocessedCapture.loadLatest();
-      setPpImages(images.map((f) => f.url));
-    }
     if (obstacleDetectionCapture?.available) {
       const d = await obstacleDetectionCapture.loadLatest();
       setObsDetRows(d.obstacles || []);
@@ -2490,7 +2415,6 @@ function DataScreen({
     inputImageLogCapture,
     inputCapture,
     propertiesCapture,
-    preprocessedCapture,
     obstacleDetectionCapture,
     occupancyGridCapture,
     predSafePathCapture,
@@ -2607,7 +2531,10 @@ function DataScreen({
         id: "safepath",
         name: "Safe Path",
         build: () => {
-          const images = safePathImg ? [{ caption: "Predicted Safe Path", url: safePathImg }] : [];
+          const images = [
+            ...(gridImg ? [{ caption: "Occupancy Grid Map", url: gridImg }] : []),
+            ...(safePathImg ? [{ caption: "Predicted Safe Path", url: safePathImg }] : []),
+          ];
           const table = waypointRows.length
             ? {
                 columns: ["Img No.", ...PARAMETER_TABLES[3].columns.map((c) => c.label)],
@@ -2711,6 +2638,7 @@ function DataScreen({
       maskImg,
       bboxImg,
       obsDetRows,
+      gridImg,
       safePathImg,
       waypointRows,
       distanceImages,
@@ -2728,67 +2656,19 @@ function DataScreen({
   const toggleCheck = (id) => setChecked((c) => ({ ...c, [id]: !c[id] }));
   const checkedItems = tabItems.filter((item) => checked[item.id]);
 
-  // The real captured image(s) behind each "Data to Share" window — same
-  // sources Obs. Det. / Safe Path / Dist. Map read from — keyed by item id
-  // so both handlers below can just look up `IMAGE_MAP[item.id]`.
-  const IMAGE_MAP = useMemo(
-    () => ({
-      left: capture.left ? [{ caption: "Left Image", url: capture.left }] : [],
-      right: capture.right ? [{ caption: "Right Image", url: capture.right }] : [],
-      preprocessed: ppImages.length ? [{ caption: "Preprocessed Image", url: ppImages[0] }] : [],
-      obsdet: [
-        maskImg ? { caption: "Obstacle Pixel Mask", url: maskImg } : null,
-        bboxImg ? { caption: "Obstacle BBoxes", url: bboxImg } : null,
-      ].filter(Boolean),
-      occupancy: gridImg ? [{ caption: "Occupancy Grid Map", url: gridImg }] : [],
-      predsafepath: safePathImg ? [{ caption: "Predicted Safe Path", url: safePathImg }] : [],
-      distances: distanceImages.obstacleDistancesImg ? [{ caption: "Obstacle Distances", url: distanceImages.obstacleDistancesImg }] : [],
-      distancemap: distanceImages.distanceMapImg ? [{ caption: "Distance Map", url: distanceImages.distanceMapImg }] : [],
-      threedview: distanceImages.view3dImg ? [{ caption: "3D View", url: distanceImages.view3dImg }] : [],
-      elevation: distanceImages.elevationImg ? [{ caption: "Relative Elevation Map", url: distanceImages.elevationImg }] : [],
-    }),
-    [capture.left, capture.right, ppImages, maskImg, bboxImg, gridImg, safePathImg, distanceImages]
-  );
-
-  // "All Windows" (Task 2e): a single gallery on the Data tab that shows
-  // every captured output window the pipeline has produced so far, always in
-  // the same order (Input -> Preprocessed -> Obstacle Detection -> Occupancy
-  // -> Safe Path -> Distance Map -> 3D -> Elevation). Only windows the
-  // backend has actually produced appear.
-  const allWindows = useMemo(
-    () =>
-      [
-        ...IMAGE_MAP.left,
-        ...IMAGE_MAP.right,
-        ...IMAGE_MAP.preprocessed,
-        ...IMAGE_MAP.obsdet,
-        ...IMAGE_MAP.occupancy,
-        ...IMAGE_MAP.predsafepath,
-        ...IMAGE_MAP.distances,
-        ...IMAGE_MAP.distancemap,
-        ...IMAGE_MAP.threedview,
-        ...IMAGE_MAP.elevation,
-      ].filter((t) => t && t.url),
-    [
-      IMAGE_MAP.left,
-      IMAGE_MAP.right,
-      IMAGE_MAP.preprocessed,
-      IMAGE_MAP.obsdet,
-      IMAGE_MAP.occupancy,
-      IMAGE_MAP.predsafepath,
-      IMAGE_MAP.distances,
-      IMAGE_MAP.distancemap,
-      IMAGE_MAP.threedview,
-      IMAGE_MAP.elevation,
-    ]
-  );
-
+  // Per-sub-heading opt-out: which of a checked tab's sub-headings (windows)
+  // should carry into the report. A window that's absent from this map
+  // defaults to included. Keyed by the window ids below.
+  const [windowChecked, setWindowChecked] = useState({});
+  const winIncluded = (w) => windowChecked[w.id] !== false;
+  const toggleWindowCheck = (id) => setWindowChecked((c) => ({ ...c, [id]: !(c[id] !== false) }));
 
   // Every ticked tab becomes its own set of numbered sections in the PDF —
   // images (where Run Algorithms has produced one this session) plus its
-  // data table, mirroring the content that tab displays. If a checked tab
-  // has no captured content yet, its section falls back to a short note
-  // instead of rendering empty.
+  // data table, mirroring the content that tab displays. Unchecked
+  // sub-headings (window checkboxes) are excluded from that tab's section
+  // by caption/heading. If a checked tab has no captured content yet, its
+  // section falls back to a short note instead of rendering empty.
   const handleGenerateReport = async () => {
     if (checkedItems.length === 0) {
       pushToast({ type: "error", title: "Nothing to report", message: "Tick at least one tab to include in the report first." });
@@ -2797,10 +2677,23 @@ function DataScreen({
 
     const sections = checkedItems.flatMap((item) => {
       const built = item.build();
-      if (!built.length) {
+      const wins = WINDOW_ITEMS[item.id] || [];
+      const onProduced = wins.filter(winIncluded).flatMap((w) => w.produces);
+      const allProduced = wins.flatMap((w) => w.produces);
+      const kept = built.flatMap((sec) => {
+        if (sec.images && sec.images.length) {
+          const images = sec.images.filter((img) => onProduced.includes(img.caption));
+          return images.length ? [{ ...sec, images }] : [];
+        }
+        if (allProduced.includes(sec.heading)) {
+          return onProduced.includes(sec.heading) ? [sec] : [];
+        }
+        return [sec];
+      });
+      if (!kept.length) {
         return [{ heading: item.name, imageNotes: ["Nothing captured for this tab yet — run Run Algorithms first."] }];
       }
-      return built;
+      return kept;
     });
 
     await runGenerateReport(generateReport, pushToast, "Data", sections);
@@ -2819,53 +2712,39 @@ function DataScreen({
             selected={selected.rover} onSelectChange={(v) => setSelected((s) => ({ ...s, rover: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
             onExpand={() => setExpandedContent({ title: roverTable.heading, table: roverTable })} />
-
-          <div className="all-windows">
-            <div className="all-windows__head">
-              <span>All Windows</span>
-              <span className="all-windows__count">{allWindows.length} window{allWindows.length === 1 ? "" : "s"}</span>
-            </div>
-            {allWindows.length === 0 ? (
-              <div className="all-windows__empty">
-                Run Algorithms to produce pipeline outputs; every generated
-                window will appear here.
-              </div>
-            ) : (
-              <div className="all-windows__grid">
-                {allWindows.map((w, i) => (
-                  <figure key={i} className="all-windows__tile">
-                    <img src={w.url} alt={w.caption} />
-                    <figcaption>{w.caption}</figcaption>
-                  </figure>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
         <aside className="sidepanel">
           <div className="propbox share-box">
             <div className="propbox__title"><span>Tabs to include in report</span></div>
             <div className="share-list">
-              {tabItems.map((item) => (
-                <label className="share-item" key={item.id}>
-                  <Checkbox checked={!!checked[item.id]} onChange={() => toggleCheck(item.id)} />
-                  <span>{item.name}</span>
-                </label>
-              ))}
+              {tabItems.map((item) => {
+                const wins = WINDOW_ITEMS[item.id] || [];
+                return (
+                  <div className="share-group" key={item.id}>
+                    <div className="share-group__head">
+                      <label className="share-item">
+                        <Checkbox checked={!!checked[item.id]} onChange={() => toggleCheck(item.id)} />
+                        <span>{item.name}</span>
+                      </label>
+                    </div>
+                    {wins.length > 0 && (
+                      <div className="share-group__windows">
+                        {wins.map((w) => (
+                          <label className="share-window" key={w.id}>
+                            <Checkbox checked={winIncluded(w)} onChange={() => toggleWindowCheck(w.id)} />
+                            <span className="share-window__name">{w.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
 <div className="btn-row">
-            <PipelineRunButton
-              actionId="occupancyGrid"
-              label="data.exe"
-              runningLabel="Building grid..."
-              title="Occupancy Grid"
-              hint="left"
-              pushToast={pushToast}
-              onDone={loadAll}
-            />
             <button className="btn" onClick={handleGenerateReport}>Generate Report</button>
           </div>
         </aside>
@@ -2922,13 +2801,23 @@ function SettingsModal({ onClose, fontChoice, setFontChoice, fontSize, setFontSi
    with a Run button that launches the matching stage script so the
    vessel's live telemetry can be refreshed on demand.
 ================================================================ */
-function TelemetryScreen({ setExpandedContent, pushToast, telecommandLogCapture, telemetryLogCapture, telemetryRunner, runSignal }) {
+function TelemetryScreen({ setExpandedContent, pushToast, telecommandLogCapture, telemetryLogCapture, runSignal }) {
   const [activeWindow, setActiveWindow] = useState("telecommand");
   const [selected, setSelected] = useState({ telecommand: true, telemetry: true });
   const [telemetryRows, setTelemetryRows] = useState([]);
   const [telecommandRows, setTelecommandRows] = useState([]);
-  const [telemetryBusy, setTelemetryBusy] = useState(false);
-  const [telecommandBusy, setTelecommandBusy] = useState(false);
+
+  // Which rows of each log the "Refresh Logs" sidebar keeps visible — the
+  // TC1..3 / TM1..3 sub-headings toggle row 1..3 of each table (rows beyond
+  // the third aren't bound to a sub-heading and always stay visible). A row
+  // absent from the map defaults to included, so nothing changes until the
+  // user unchecks a sub-heading.
+  const [tcChecked, setTcChecked] = useState({});
+  const [tmChecked, setTmChecked] = useState({});
+  const tcIn = (no) => tcChecked[no] !== false;
+  const tmIn = (no) => tmChecked[no] !== false;
+  const toggleTc = (no) => setTcChecked((c) => ({ ...c, [no]: !(c[no] !== false) }));
+  const toggleTm = (no) => setTmChecked((c) => ({ ...c, [no]: !(c[no] !== false) }));
 
   const loadAll = useCallback(async () => {
     if (telecommandLogCapture?.available) {
@@ -2945,93 +2834,76 @@ function TelemetryScreen({ setExpandedContent, pushToast, telecommandLogCapture,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runSignal]);
 
-  const runTelecommand = async () => {
-    if (!telemetryRunner?.available) {
-      pushToast({ type: "error", title: "Unavailable", message: "Telecommand is only available in the desktop app." });
-      return;
-    }
-    setTelecommandBusy(true);
-    const result = await telemetryRunner.run("telecommand");
-    setTelecommandBusy(false);
-    if (result?.ok) {
-      pushToast({ type: "success", title: "Telecommand sent", message: "Log refreshed." });
-      await telecommandLogCapture.loadLatest().then(setTelecommandRows);
-    } else {
-      pushToast({ type: "error", title: "Telecommand failed", message: result?.error || "Unknown error." });
-    }
-  };
-
-  const runTelemetry = async () => {
-    if (!telemetryRunner?.available) {
-      pushToast({ type: "error", title: "Unavailable", message: "Telemetry is only available in the desktop app." });
-      return;
-    }
-    setTelemetryBusy(true);
-    const result = await telemetryRunner.run("telemetry");
-    setTelemetryBusy(false);
-    if (result?.ok) {
-      pushToast({ type: "success", title: "Telemetry refreshed", message: "Log updated." });
-      await telemetryLogCapture.loadLatest().then(setTelemetryRows);
-    } else {
-      pushToast({ type: "error", title: "Telemetry failed", message: result?.error || "Unknown error." });
-    }
-  };
-
   // Same data-table shape as the rest of the app, so both logs can be
   // rendered with the shared DataTablePanel (checkbox + expand like the
   // Data tab) instead of bespoke side-by-side panels.
   const telecommandTable = useMemo(() => ({
     heading: "Telecommand Log (11_Telecommand_Data)",
     columns: TELECOMMAND_COLUMNS,
-    rows: telecommandRows.map((r, i) => ({
-      imgNo: i + 1, module: r.module ?? "", size: r.size ?? "", value: r.value ?? "",
-      timestamp: r.timestamp ?? "", status: r.status ?? "",
-    })),
-  }), [telecommandRows]);
+    rows: telecommandRows
+      .map((r, i) => ({
+        imgNo: i + 1, module: r.module ?? "", size: r.size ?? "", value: r.value ?? "",
+        timestamp: r.timestamp ?? "", status: r.status ?? "",
+      }))
+      .filter((r) => r.imgNo > 3 || tcChecked[r.imgNo] !== false),
+  }), [telecommandRows, tcChecked]);
 
   const telemetryTable = useMemo(() => ({
     heading: "Telemetry Log (12_Telemetry_Data)",
     columns: TELEMETRY_COLUMNS,
-    rows: telemetryRows.map((r, i) => ({
-      imgNo: i + 1, module: r.module ?? "", size: r.size ?? "", value: r.value ?? "",
-      timestamp: r.timestamp ?? "", status: r.status ?? "",
-    })),
-  }), [telemetryRows]);
+    rows: telemetryRows
+      .map((r, i) => ({
+        imgNo: i + 1, module: r.module ?? "", size: r.size ?? "", value: r.value ?? "",
+        timestamp: r.timestamp ?? "", status: r.status ?? "",
+      }))
+      .filter((r) => r.imgNo > 3 || tmChecked[r.imgNo] !== false),
+  }), [telemetryRows, tmChecked]);
 
   return (
     <div className="content">
-      <div className="section__header">
-        <div>
-          <h1 className="section__title">Telemetry & Telecommand</h1>
-          <p className="section__hint">Live vessel telemetry and issued telecommands.</p>
-        </div>
-      </div>
-
       <div className="screen-grid">
         <div className="data-tables">
           <DataTablePanel id="telecommand" title={telecommandTable.heading} table={telecommandTable}
             selected={selected.telecommand}
             onSelectChange={(v) => setSelected((s) => ({ ...s, telecommand: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
-            onExpand={() => setExpandedContent({ title: telecommandTable.heading, table: telecommandTable })} />
+            onExpand={() => setExpandedContent({ title: telecommandTable.heading, table: telecommandTable })}
+            run={{ actionId: "telemetry", hint: "telecommand", title: "Telecommand", onDone: loadAll }} pushToast={pushToast} />
 
           <DataTablePanel id="telemetry" title={telemetryTable.heading} table={telemetryTable}
             selected={selected.telemetry}
             onSelectChange={(v) => setSelected((s) => ({ ...s, telemetry: v }))}
             activeWindow={activeWindow} onFocus={setActiveWindow}
-            onExpand={() => setExpandedContent({ title: telemetryTable.heading, table: telemetryTable })} />
+            onExpand={() => setExpandedContent({ title: telemetryTable.heading, table: telemetryTable })}
+            run={{ actionId: "telemetry", hint: "telemetry", title: "Telemetry", onDone: loadAll }} pushToast={pushToast} />
         </div>
 
         <aside className="sidepanel">
           <div className="propbox share-box">
             <div className="propbox__title"><span>Refresh Logs</span></div>
             <div className="share-list">
-              <button className="btn btn-primary" disabled={telecommandBusy} onClick={runTelecommand}>
-                {telecommandBusy ? "Sending..." : "telecommand.exe"}
-              </button>
-              <button className="btn btn-primary" disabled={telemetryBusy} onClick={runTelemetry}>
-                {telemetryBusy ? "Refreshing..." : "telemetry.exe"}
-              </button>
+              <div className="share-group">
+                <div className="share-group__head"><span className="share-group__heading">Telecommand</span></div>
+                <div className="share-group__windows">
+                  {[1, 2, 3].filter((no) => no <= telecommandRows.length).map((no) => (
+                    <label className="share-window" key={`tc-${no}`}>
+                      <Checkbox checked={tcIn(no)} onChange={() => toggleTc(no)} />
+                      <span className="share-window__name">TC{no}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="share-group">
+                <div className="share-group__head"><span className="share-group__heading">Telemetry</span></div>
+                <div className="share-group__windows">
+                  {[1, 2, 3].filter((no) => no <= telemetryRows.length).map((no) => (
+                    <label className="share-window" key={`tm-${no}`}>
+                      <Checkbox checked={tmIn(no)} onChange={() => toggleTm(no)} />
+                      <span className="share-window__name">TM{no}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </aside>
@@ -3082,6 +2954,29 @@ const [activeScreen, setActiveScreen] = useState(() => {
   const [expandedContent, setExpandedContent] = useState(null);
   const { toasts, push, dismiss } = useToasts();
 
+  // Topbar "Run All" (Run Algorithms) drives every pipeline stage back to
+  // back — the copy-into-Input step first (if the user has picked raw paths),
+  // then each tab's stage in dependency order. It shares the same runner the
+  // per-window ▶ buttons use.
+  const pipeline = usePipelineRunner();
+  const [runningAll, setRunningAll] = useState(false);
+
+  // Stages the topbar Run All button fires, in order, after the raw-image
+  // copy step: [actionId, hint]. Mirrors the per-window ▶ buttons — if a new
+  // stage/action is added to a tab, add it here too.
+  const RUN_ALL_STAGES = [
+    ["preprocess", "left"],
+    ["obstacleDetection", "left"],
+    ["occupancyGrid", "left"],
+    ["safePath", "left"],
+    ["distanceMap", "left"],
+    ["navigation", "left"],
+    ["sceneAnalysis", "left"],
+    ["telemetry", "telecommand"],
+    ["telemetry", "telemetry"],
+    ["roverHealth", "left"],
+  ];
+
   // Owned here (not inside InputScreenHeader) so every tab can be force-
   // remounted (via the `key` below) whenever the workspace folder changes
   // — including being cleared back to "none". A plain useState reset isn't
@@ -3123,7 +3018,6 @@ const [activeScreen, setActiveScreen] = useState(() => {
   const waypointsLogCapture = useWaypointsLog();
   const telemetryLogCapture = useTelemetryLog();
   const telecommandLogCapture = useTelecommandLog();
-  const telemetryRunner = useTelemetryRunner();
   const navImagesCapture = useNavigationImages();
   const navPropertiesCapture = useNavigationProperties();
   const rosVideoCapture = useRosSimulationVideo();
@@ -3265,26 +3159,54 @@ useEffect(() => {
             <Play size={13} />
           </button>
           <button
-            className="topbar__run-btn"
+            className={`topbar__run-btn${runningAll ? " topbar__run-btn--active" : ""}`}
             onClick={async () => {
-              const sel = inputScreenRef.current?.getSelectedRawPaths();
-              if (!sel || (!sel.leftPath && !sel.rightPath)) {
-                push({ type: "error", title: "Nothing selected", message: "Load and pick a Left/Right image in the Input screen first." });
+              if (runningAll) return;
+              if (!pipeline.available) {
+                push({ type: "error", title: "Run All", message: "Pipeline execution is only available in the desktop app." });
                 return;
               }
-              const result = await runAlgorithms(sel.leftPath, sel.rightPath);
-              if (result.ok) {
-                push({ type: "success", title: "Sent to Input", message: `Copied into 03_Input_Image/${result.sessionFolder}.` });
-                setHasSession(true);
+              setRunningAll(true);
+              try {
+                // 1) Input step — copy the picked raw images into a fresh
+                // session folder (the base everything else reads from).
+                // Skipped when nothing is loaded/selected; the stages below
+                // then just re-run against the latest existing session.
+                const sel = inputScreenRef.current?.getSelectedRawPaths();
+                if (sel && (sel.leftPath || sel.rightPath)) {
+                  const base = await runAlgorithms(sel.leftPath, sel.rightPath);
+                  if (!base.ok) {
+                    push({ type: "error", title: "Could not run", message: base.error || "Something went wrong." });
+                    return;
+                  }
+                  push({ type: "success", title: "Sent to Input", message: `Copied into 03_Input_Image/${base.sessionFolder}.` });
+                  setHasSession(true);
+                }
+
+                // 2) Every tab's pipeline stage, one after the other.
+                const failed = [];
+                for (const [actionId, hint] of RUN_ALL_STAGES) {
+                  const res = await pipeline.run(actionId, hint);
+                  if (!res || !res.ok) failed.push(`${actionId}${res?.error ? ` (${res.error})` : ""}`);
+                }
+
+                // 3) One refresh at the end so every tab re-pulls its newest
+                // output from disk.
                 setRunSignal((n) => n + 1);
-              } else {
-                push({ type: "error", title: "Could not run", message: result.error || "Something went wrong." });
+                if (failed.length === 0) {
+                  push({ type: "success", title: "Run All Tabs", message: "Every pipeline stage completed. All tabs refreshed." });
+                } else {
+                  push({ type: "error", title: "Run All Tabs", message: `${failed.length} stage(s) failed: ${failed.join(", ")}.` });
+                }
+              } finally {
+                setRunningAll(false);
               }
             }}
-            title="Run algorithms"
+            title="Run Algorithms — copy the picked raw images into Input, then run every pipeline stage in order"
+            disabled={runningAll}
           >
             <Cpu size={13} />
-            <span>Run Algorithms</span>
+            <span>{runningAll ? "Running…" : "Run Algorithms"}</span>
           </button>
           <button
             className="topbar__run-btn"
@@ -3358,7 +3280,6 @@ useEffect(() => {
             key={workspaceKey}
             ref={inputScreenRef}
             setExpandedContent={setExpandedContent}
-            pushToast={push}
             inputCapture={inputCapture}
             playSignal={playSignal}
             runSignal={runSignal}
@@ -3426,7 +3347,6 @@ useEffect(() => {
             setExpandedContent={setExpandedContent}
             inputCapture={inputCapture}
             propertiesCapture={propertiesCapture}
-            preprocessedCapture={preprocessedCapture}
             predSafePathCapture={predSafePathCapture}
             inputImageLogCapture={inputImageLogCapture}
             obstacleDetectionCapture={obstacleDetectionCapture}
@@ -3463,7 +3383,6 @@ useEffect(() => {
             pushToast={push}
             telecommandLogCapture={telecommandLogCapture}
             telemetryLogCapture={telemetryLogCapture}
-            telemetryRunner={telemetryRunner}
             runSignal={runSignal}
           />
         )}

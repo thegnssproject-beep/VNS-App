@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import {
-  Check,
   Settings,
   X,
   Play,
@@ -36,9 +35,7 @@ function Checkbox({ checked, onChange, title }) {
       onClick={() => onChange(!checked)}
       title={title || "Select for sharing"}
       aria-pressed={checked}
-    >
-      {checked && <Check size={11} strokeWidth={3} />}
-    </button>
+    />
   );
 }
 

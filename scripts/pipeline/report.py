@@ -1,10 +1,14 @@
-"""VNS report generator — produces the "Vision Navigation Analysis Report" PDF.
+"""VNS report generator — reproduces the user's "Report Layout.docx" report
+exactly (ditto copy): a centred cover page, then numbered section headings
+(1. Input Image, 2. Image Preprocessing, ...), the intro sentence under each
+heading, the figure grids (each image captioned "Figure N: ..." below it),
+and the Parameter/Value (or User Query/AI Response) tables.
 
 This is the ONE file to edit when the report's look-and-feel needs to change.
 The Electron main process only assembles the data (a JSON *manifest* of the
 current session's section headings, captions and image paths) and hands this
 script a <manifest.json> <output.pdf> pair. Every pixel of the PDF — fonts,
-colours, cover page, figure layout, table styling — lives in here.
+colours, cover, headings, figure grids, table styling — lives in here.
 
   Usage: report.py <manifest.json> [output.pdf]
           manifest.json:  { meta: { title, sessionId, date },
@@ -12,19 +16,35 @@ colours, cover page, figure layout, table styling — lives in here.
                                           images: [{ caption, path }],
                                           table: { columns, rows } } ] }
 
-Pure standard library (the same rule as every other stage script), so the
-whole thing can be packaged into one .exe with PyInstaller and run on any
-Windows box. PDFs are written by hand (no reportlab/fpdf): base-14 Helvetica
-fonts (no embedding needed), JPEG images embedded as DCTDecode, PNG images
-rebuilt from their zlib-compressed raw scanlines (Filter 0-4) — RGBA PNGs
-get a separate SMask for a proper alpha channel.
+Layout mirrors the reference document:
+  * A4 page with 1.25" side margins and 1" top/bottom margins; Times New
+    Roman look via the base-14 Times family.
+  * Cover page: "Visison Navigation Analysis Report" (20pt bold, centred),
+    "Image ID: <session>" (16pt bold, centred), "Date: <date>" (14pt bold,
+    centred). The sections start on a fresh page, like the template's hard
+    page break.
+  * Section headings numbered "N. <Heading>" in 14pt bold, then the intro
+    sentence (11pt), then the figure grid with "Figure N: <caption>" centred
+    under each image, then the property table.
+  * Grid shape per section taken from the reference layout: Input Image /
+    Relative Elevation / Occupancy Grid / Safe Path stack single full-width
+    figures; Image Preprocessing shows two side-by-side pairs then one
+    full-width rectified figure; Obstacle Detection / Obstacle Distances
+    show two side-by-side pairs; Visual Odometry shows one side-by-side pair
+    plus a full-width localization figure; Scene Description is a
+    Query/Response table with no figures.
+  * Underlines reproduce the template: the "captured on <date>, at <time>"
+    intro and the two NavCam camera captions are underlined.
+  * Tables have a bold centred header row (Parameter/Value or User Query/AI
+    Response); property cells centred, QA cells left-aligned; a single 0.5pt
+    black grid. The first four sections' tables keep the reference's two
+    trailing empty rows.
 
-Layout (mirrors the reference "Vision Navigation Analysis Report"):
-  * A4 cover page with a double border, title, Image ID, Date
-  * numbered section headings on a light-blue bar with an underline
-  * images in bordered frames with "Figure N:" captions (2-up)
-  * Parameter/Value (or Query/Response) tables with a light header fill
-  * "Page X of Y" footer + report header on every body page
+Pure standard library (the same rule as every other stage script), so the
+whole thing can be packaged into one .exe with PyInstaller. PDFs are written
+by hand (no reportlab/fpdf): base-14 Times fonts (no embedding needed), JPEG
+images embedded as DCTDecode, PNG images rebuilt from their zlib-compressed
+raw scanlines (Filter 0-4) — RGBA PNGs get a separate SMask.
 """
 import json
 import os
@@ -35,53 +55,105 @@ import zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ---------------------------------------------------------------------------
-# Palette + layout constants (edit these to re-theme the whole report)
+# Layout constants (mirror the reference Report Layout.docx)
 # ---------------------------------------------------------------------------
-NAVY = (15, 42, 74)          # section headings, cover title
-BODY = (22, 50, 74)          # intro / table text
-GRAY = (51, 71, 91)          # captions, footers
-LIGHT = (92, 122, 150)       # muted notes
-HEADER_FILL = (207, 227, 247)  # table header row
-BORDER = (159, 184, 209)     # table / figure borders
-ALT_ROW = (238, 245, 252)    # zebra rows
-FRAME_FILL = (250, 252, 254)  # figure frame background
+BLACK = (0, 0, 0)
+INK = (0, 0, 0)                 # body text
+GRAY = (70, 70, 70)             # image notes
 
-PAGE_W, PAGE_H = 595.276, 841.890  # A4 (pt)
-ML, MR = 55.0, 55.0           # side margins
-MB = 78.0                     # bottom margin (leaves footer room)
+PAGE_W, PAGE_H = 595.3, 841.9   # A4 (pt)
+ML = 90.0                       # left margin 1.25 in
+MR = 90.0
+MT = 72.0                       # top margin 1 in
+MB = 72.0                       # bottom margin 1 in
+TEXTW = PAGE_W - ML - MR        # text width 415.3 pt
+PAIR_GAP = 10.0                 # gutter between two side-by-side figures
 
-F_HELV = "F1"
-F_HELV_B = "F2"
-F_HELV_O = "F3"
+F_TIMES = "F1"        # Times-Roman
+F_TIMES_B = "F2"      # Times-Bold
+F_TIMES_I = "F3"      # Times-Italic
+F_TIMES_BI = "F4"     # Times-BoldItalic
 
-FONT_SIZE_TITLE = 23
-FONT_SIZE_HEADING = 13
-FONT_SIZE_INTRO = 10
-FONT_SIZE_CAPTION = 8.5
-FONT_SIZE_TABLE = 9
-FONT_SIZE_META = 11
+SZ_TITLE = 20         # cover title
+SZ_IMGID = 16         # cover "Image ID:"
+SZ_DATE = 14          # cover "Date:"
+SZ_HEADING = 14       # numbered section headings
+SZ_BODY = 11          # intro sentences / paragraphs
+SZ_CAPTION = 11       # "Figure N: ..."
+SZ_TABLE = 11         # property / QA table cells
+SZ_NOTE = 9           # image notes
 
-CONTENT_W = PAGE_W - ML - MR
-
-# Helvetica advance widths (units / 1000) for ASCII 32..126 — used to centre
-# text and wrap paragraphs without embedding a font file.
-_HELV = {
-    32:278, 33:278, 34:355, 35:556, 36:556, 37:889, 38:667, 39:191, 40:333, 41:333,
-    42:389, 43:584, 44:278, 45:333, 46:278, 47:278, 48:556, 49:556, 50:556, 51:556,
-    52:556, 53:556, 54:556, 55:556, 56:556, 57:556, 58:278, 59:278, 60:584, 61:584,
-    62:584, 63:556, 64:1015, 65:667, 66:667, 67:722, 68:722, 69:667, 70:611, 71:778,
-    72:722, 73:278, 74:500, 75:667, 76:556, 77:833, 78:722, 79:778, 80:667, 81:778,
-    82:722, 83:667, 84:611, 85:722, 86:667, 87:944, 88:667, 89:667, 90:611, 91:278,
-    92:278, 93:278, 94:469, 95:556, 96:333, 97:556, 98:556, 99:500, 100:556, 101:556,
-    102:278, 103:556, 104:556, 105:222, 106:222, 107:500, 108:222, 109:833, 110:556,
-    111:556, 112:556, 113:556, 114:333, 115:500, 116:278, 117:556, 118:500, 119:722,
-    120:500, 121:500, 122:500, 123:334, 124:260, 125:334, 126:584,
+# Figure-grid shape per reference section. Every tuple is one row; 1 = a
+# full-width figure, 0 = a side-by-side figure from a pair. Sections not
+# listed fall back to one full-width figure per row.
+GRID_LAYOUTS = {
+    "Input Image": ((1,), (1,)),
+    "Image Preprocessing": ((0, 0), (0, 0), (1,)),
+    "Obstacle Detection": ((0, 0), (0, 0)),
+    "Obstacle Distances": ((0, 0), (0, 0)),
+    "Relative Elevation": ((1,), (1,), (1,)),
+    "Occupancy Grid": ((1,), (1,)),
+    "Safe Path": ((1,), (1,)),
+    "Visual Odometry and Rover Localization": ((0, 0), (1,)),
+    "Scene Description": (),
 }
-def _text_width(text, size):
+
+# Sentence that introduces each section's property table (verbatim from the
+# reference document). Only used when the manifest section has no `text`.
+TABLE_INTROS = {
+    "Input Image": "The image properties are as follows:",
+    "Image Preprocessing": "The following are the properties of the preprocessed and rectified images:",
+    "Obstacle Detection": "The following are the details of the detected obstacles for the input image:",
+    "Obstacle Distances": "The following are the details of the distances of the detected obstacles for the input image:",
+    "Relative Elevation": "The following are the 3D properties for the input image:",
+    "Occupancy Grid": "The following are the details of the occupancy grid generated from the input image:",
+    "Safe Path": "The following are the details of the predicted safe path for the input image:",
+    "Visual Odometry and Rover Localization": "The following are the details for the input image:",
+    "Scene Description": "",
+}
+
+# Reference sections whose Parameter/Value table has two trailing empty rows.
+BLANK_ROWS_SECTIONS = {"Input Image", "Image Preprocessing",
+                       "Obstacle Detection", "Obstacle Distances"}
+
+# Times-Roman advance widths (units / 1000) for ASCII 32..126 — used to
+# centre/justify text and wrap paragraphs without embedding a font file.
+_TIMES = {
+    32:250, 33:333, 34:408, 35:500, 36:500, 37:833, 38:778, 39:180, 40:333, 41:333,
+    42:500, 43:564, 44:250, 45:333, 46:250, 47:278, 48:500, 49:500, 50:500, 51:500,
+    52:500, 53:500, 54:500, 55:500, 56:500, 57:500, 58:278, 59:278, 60:564, 61:564,
+    62:564, 63:444, 64:921, 65:722, 66:667, 67:667, 68:722, 69:611, 70:556, 71:722,
+    72:722, 73:333, 74:389, 75:722, 76:611, 77:889, 78:722, 79:722, 80:556, 81:722,
+    82:667, 83:556, 84:611, 85:722, 86:722, 87:944, 88:722, 89:722, 90:611, 91:333,
+    92:278, 93:333, 94:469, 95:500, 96:333, 97:444, 98:500, 99:444, 100:500, 101:444,
+    102:333, 103:500, 104:556, 105:278, 106:278, 107:500, 108:278, 109:778, 110:556,
+    111:500, 112:500, 113:500, 114:333, 115:389, 116:278, 117:556, 118:444, 119:667,
+    120:500, 121:444, 122:389, 123:400, 124:275, 125:400, 126:500,
+}
+# Times-Bold advance widths (ASCII 32..126)
+_TIMES_B = {
+    32:250, 33:333, 34:555, 35:500, 36:500, 37:1000, 38:833, 39:278, 40:333, 41:333,
+    42:500, 43:570, 44:250, 45:333, 46:250, 47:278, 48:500, 49:500, 50:500, 51:500,
+    52:500, 53:500, 54:500, 55:500, 56:500, 57:500, 58:333, 59:333, 60:570, 61:570,
+    62:570, 63:500, 64:930, 65:722, 66:667, 67:722, 68:722, 69:667, 70:611, 71:778,
+    72:778, 73:389, 74:500, 75:778, 76:667, 77:944, 78:722, 79:778, 80:611, 81:778,
+    82:722, 83:556, 84:667, 85:722, 86:722, 87:1000, 88:722, 89:722, 90:667, 91:333,
+    92:278, 93:333, 94:581, 95:500, 96:333, 97:500, 98:556, 99:444, 100:556, 101:444,
+    102:333, 103:500, 104:556, 105:278, 106:333, 107:556, 108:278, 109:833, 110:556,
+    111:500, 112:556, 113:556, 114:444, 115:389, 116:333, 117:556, 118:500, 119:722,
+    120:500, 121:500, 122:444, 123:394, 124:220, 125:394, 126:520,
+}
+
+_FONT_W = {F_TIMES: _TIMES, F_TIMES_B: _TIMES_B,
+           F_TIMES_I: _TIMES, F_TIMES_BI: _TIMES_B}
+
+
+def _text_width(text, size, font=F_TIMES):
+    table = _FONT_W.get(font, _TIMES)
     w = 0
     for ch in text:
         code = ord(ch)
-        w += _HELV.get(code if 32 <= code <= 126 else -1, 556)
+        w += table.get(code if 32 <= code <= 126 else -1, 556)
     return w * size / 1000.0
 
 
@@ -90,7 +162,7 @@ def _sanitize(text):
 
     cp1252 represents Latin-1 plus punctuation like — “ ” ‘ ’ € •. Those are
     kept as-is (Python encodes U+2014 to byte 0x97, which the WinAnsi
-    Helvetica font renders back as an em dash). Only chars cp1252 has no byte
+    Times font renders back as an em dash). Only chars cp1252 has no byte
     for are rewritten.
     """
     out = []
@@ -108,14 +180,14 @@ def _pdf_text(text):
     return _sanitize(text).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
 
-def _wrap(text, size, max_width):
+def _wrap(text, size, max_width, font=F_TIMES):
     words = str(text).split(" ")
     lines, cur, cur_w = [], [], 0.0
     for w in words:
-        add = _text_width(w, size) + (_text_width(" ", size) if cur else 0)
+        add = _text_width(w, size, font) + (_text_width(" ", size, font) if cur else 0)
         if cur and cur_w + add > max_width:
             lines.append(" ".join(cur))
-            cur, cur_w = [w], _text_width(w, size)
+            cur, cur_w = [w], _text_width(w, size, font)
         else:
             cur.append(w)
             cur_w += add
@@ -146,9 +218,9 @@ class PdfBuilder:
     def _op(self, page, s):
         page["stream"].extend(s.encode("cp1252"))
 
-    def text(self, page, text, x, y, font, size, color, align="left", width=None):
+    def text(self, page, text, x, y, font, size, color, align="left", width=None, underline=False):
         esc = _pdf_text(text)
-        tw = _text_width(_sanitize(text), size)
+        tw = _text_width(_sanitize(text), size, font)
         # x is the LEFT edge of the layout box; width extends it rightward.
         if align == "center":
             x = x + ((width if width is not None else 0) - tw) / 2
@@ -156,6 +228,8 @@ class PdfBuilder:
             x = x + (width if width is not None else 0) - tw
         self._op(page, "BT /%s %g Tf %g %g %g rg %g %g Td (%s) Tj ET\n"
                  % (font, size, *(c / 255.0 for c in color), x, y, esc))
+        if underline:
+            self.line(page, x, y - 2.0, x + tw, y - 2.0, color, 0.8)
 
     def rect(self, page, x, y, w, h, stroke=None, fill=None, lw=0.75):
         if stroke and fill:
@@ -180,23 +254,25 @@ class PdfBuilder:
         n_pages = len(self.pages)
 
         # Object layout: 1 catalog, 2 pages tree, n page dicts, n content
-        # streams, 3 fonts, then the image XObjects. /Kids must name the PAGE
+        # streams, 4 fonts, then the image XObjects. /Kids must name the PAGE
         # DICTS; each page's /Contents must name its own CONTENT STREAM.
         page_nums = [3 + i for i in range(n_pages)]
         content_nums = [3 + n_pages + i for i in range(n_pages)]
         base = 3 + 2 * n_pages
-        font_nums = {F_HELV: base, F_HELV_B: base + 1, F_HELV_O: base + 2}
-        base += 3
+        font_nums = {F_TIMES: base, F_TIMES_B: base + 1, F_TIMES_I: base + 2, F_TIMES_BI: base + 3}
+        base += 4
         xo_nums = {}
         for name in self.xobjects:
             xo_nums[name] = base
             base += 1
 
-        resources = "<< /Font << /%s %d 0 R /%s %d 0 R /%s %d 0 R >> /XObject << %s >> >>" % (
-            F_HELV, font_nums[F_HELV],
-            F_HELV_B, font_nums[F_HELV_B],
-            F_HELV_O, font_nums[F_HELV_O],
-            " ".join("/%s %d 0 R" % (n, xo_nums[n]) for n in self.xobjects))
+        resources = ("<< /Font << /%s %d 0 R /%s %d 0 R /%s %d 0 R /%s %d 0 R >> "
+                     "/XObject << %s >> >>"
+                     % (F_TIMES, font_nums[F_TIMES],
+                        F_TIMES_B, font_nums[F_TIMES_B],
+                        F_TIMES_I, font_nums[F_TIMES_I],
+                        F_TIMES_BI, font_nums[F_TIMES_BI],
+                        " ".join("/%s %d 0 R" % (n, xo_nums[n]) for n in self.xobjects)))
 
         objs = [b"<< /Type /Catalog /Pages 2 0 R >>",
                 b"<< /Type /Pages /Kids [%s] /Count %d >>"
@@ -213,7 +289,10 @@ class PdfBuilder:
             objs.append(b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(z)
                         + z + b"\nendstream")
 
-        for _, base_font in ((F_HELV, b"/Helvetica"), (F_HELV_B, b"/Helvetica-Bold"), (F_HELV_O, b"/Helvetica-Oblique")):
+        for _, base_font in ((F_TIMES, b"/Times-Roman"),
+                             (F_TIMES_B, b"/Times-Bold"),
+                             (F_TIMES_I, b"/Times-Italic"),
+                             (F_TIMES_BI, b"/Times-BoldItalic")):
             objs.append(b"<< /Type /Font /Subtype /Type1 /BaseFont " + base_font
                         + b" /Encoding /WinAnsiEncoding >>")
 
@@ -370,7 +449,7 @@ def load_image(path):
 
 
 # ---------------------------------------------------------------------------
-# Report layout engine
+# Reference layout engine — renders the "Report Layout.docx" report (ditto)
 # ---------------------------------------------------------------------------
 class ReportBuilder:
     def __init__(self, meta, sections):
@@ -378,117 +457,117 @@ class ReportBuilder:
         self.sections = sections or []
         self.pdf = PdfBuilder()
         self.page = None
-        self.y = PAGE_H            # next baseline (PDF coords), top-down
+        self.y = PAGE_H
+        self.top = PAGE_H - MT
         self.figure_no = 0
+        self.table_no = 0
         self.xo_seq = 0
 
-    # -- page lifecycle -----------------------------------------------------
-    def new_page(self, header=True):
+    # -- page / cursor lifecycle --------------------------------------------
+    def new_page(self):
         self.page = self.pdf.new_page()
-        self.y = PAGE_H - 60.0
-        if header:
-            self._draw_header()
-
-    def _draw_header(self):
-        p = self.page
-        self.pdf.text(self.page, "Vision Navigation Analysis Report",
-                      ML, self.y + 28, F_HELV, 8, GRAY, align="right", width=CONTENT_W)
-        self.pdf.line(p, ML, PY := self.y + 22, PAGE_W - MR, PY, BORDER, 0.4)
+        self.y = self.top
 
     def ensure(self, needed):
-        if self.y - MB < needed:
+        if self.y - needed < MB:
             self.new_page()
-            return True
-        return False
 
-    def put_wrapped(self, text, font, size, color, width=None, gap=None, x=None):
-        lines = _wrap(text, size, width if width is not None else CONTENT_W)
-        gap = gap if gap is not None else size * 1.4
-        xx = x if x is not None else ML
-        for ln in lines:
-            self.pdf.text(self.page, ln, xx, self.y, font, size, color)
+    # -- drawing helpers ----------------------------------------------------
+    def _paragraph(self, text, underline=False):
+        gap = SZ_BODY * 1.22
+        for ln in _wrap(text, SZ_BODY, TEXTW, F_TIMES):
+            self.ensure(gap + 4)
+            self.pdf.text(self.page, ln, ML, self.y, F_TIMES, SZ_BODY, INK,
+                          underline=underline)
             self.y -= gap
-        return self.y
 
-    def put_centered(self, text, font, size, color, width=None):
-        self.pdf.text(self.page, text, ML, self.y, font, size, color,
-                      align="center", width=width if width is not None else CONTENT_W)
-        return self.y
+    def _draw_figure(self, im, box_x, box_w):
+        info = im["info"]
+        iw, ih = info["w"], info["h"]
+        scale = min(box_w / iw, (TEXTW * 0.62) / ih)
+        cw, ch = iw * scale, ih * scale
+        self.ensure(ch + 30)
+        cx = box_x + (box_w - cw) / 2
+        name = self._register_image(info)
+        self.pdf.image(self.page, name, cx, self.y - ch, cw, ch)
+        self.y -= ch + 6
+        self.figure_no += 1
+        cap = "Figure %d: %s" % (self.figure_no, _sanitize(im["caption"]))
+        underline = im["caption"] in ("Left Camera Image", "Right Camera Image")
+        self.pdf.text(self.page, cap, cx, self.y, F_TIMES, SZ_CAPTION, BLACK,
+                      align="center", width=cw, underline=underline)
+        self.y -= SZ_CAPTION * 1.3
 
-    # -- cover --------------------------------------------------------------
+    # -- cover page ---------------------------------------------------------
     def build_cover(self):
-        self.new_page(header=False)
+        self.new_page()
         p = self.page
-        self.pdf.rect(p, 26, 26, PAGE_W - 52, PAGE_H - 52, NAVY, None, 1.2)
-        self.pdf.rect(p, 33, 33, PAGE_W - 66, PAGE_H - 66, BORDER, None, 0.4)
-
-        self.y = PAGE_H - 185
-        self.put_centered("R O V E R   V I S I O N   N A V I G A T I O N", F_HELV, 8, GRAY)
-
-        title = self.meta.get("title") or "Vision Navigation Analysis Report"
-        size = FONT_SIZE_TITLE
-        while _text_width(title, size) > CONTENT_W - 40 and size > 12:
-            size -= 1
-        self.y -= 34
-        self.put_centered(title, F_HELV_B, size, NAVY)
-
-        self.y -= 10
-        line_y = self.y - 14
-        self.pdf.line(p, ML + (CONTENT_W - 170) / 2, line_y, ML + (CONTENT_W + 170) / 2, line_y, NAVY, 1.0)
-        self.y -= 34
-        self.put_centered("Vision-Based Navigation Summary", F_HELV, 11, GRAY)
-
-        # Image ID box
-        self.y -= 52
-        box_w, box_h, bx = 300, 46, ML + (CONTENT_W - 300) / 2
-        self.pdf.rect(p, bx, self.y, box_w, box_h, BORDER, FRAME_FILL, 0.6)
-        self.pdf.text(p, "Image ID: %s" % (self.meta.get("sessionId") or ""), bx, self.y + 16,
-                      F_HELV_B, FONT_SIZE_META, NAVY, align="center", width=box_w)
-        self.y -= 56
-        self.put_centered("Date: %s" % (self.meta.get("date") or ""), F_HELV, FONT_SIZE_META, BODY)
-
-        foot = "Prepared by the Vision Navigation Software system"
-        self.pdf.line(p, ML + 90, 96, PAGE_W - MR - 90, 96, BORDER, 0.4)
-        self.pdf.text(p, foot, ML, 76, F_HELV, 8, LIGHT, align="center", width=CONTENT_W)
+        # Reference cover, verbatim: title / image id / date, bold + centred.
+        self.pdf.text(p, "Visison Navigation Analysis Report", ML, self.top - 104,
+                      F_TIMES_B, SZ_TITLE, BLACK, align="center", width=TEXTW)
+        self.pdf.text(p, "Image ID: %s" % (self.meta.get("sessionId") or "Session-ID"),
+                      ML, self.top - 172, F_TIMES_B, SZ_IMGID, BLACK,
+                      align="center", width=TEXTW)
+        self.pdf.text(p, "Date: %s" % (self.meta.get("date") or ""),
+                      ML, self.top - 214, F_TIMES_B, SZ_DATE, BLACK,
+                      align="center", width=TEXTW)
+        self.new_page()   # sections start on a fresh page (template's break)
 
     # -- sections -----------------------------------------------------------
     def build_sections(self):
         for idx, section in enumerate(self.sections, start=1):
-            self.ensure(40)
-            self._section_heading(section, idx)
-            if section.get("intro"):
-                self.ensure(FONT_SIZE_INTRO * 1.4)
-                self.put_wrapped(section["intro"], F_HELV, FONT_SIZE_INTRO, BODY)
-            images = self._load_section_images(section)
-            if images:
-                self.ensure(40)
-                self._draw_image_grid(images)
-            elif section.get("imageNotes"):
-                for note in section["imageNotes"]:
-                    self.ensure(16)
-                    self.pdf.text(self.page, note, ML, self.y, F_HELV_O, 9.5, LIGHT)
-                    self.y -= 15
-            if section.get("text"):
-                self.ensure(FONT_SIZE_INTRO * 1.4)
-                self.put_wrapped(section["text"], F_HELV, FONT_SIZE_INTRO, BODY)
-            table = section.get("table") or {}
-            if table.get("columns") and table.get("rows"):
-                self.ensure(18)
-                self.pdf.text(self.page,
-                              "The following are the details for %s:"
-                              % _sanitize(section.get("heading", "")).lower(),
-                              ML, self.y, F_HELV_B, 9.5, BODY)
-                self.y -= 17
-                self._draw_table(table)
-            self.y -= 24
+            heading = (section.get("heading") or "").strip()
+            self.ensure(SZ_HEADING * 2.2)
+            self.pdf.text(self.page, "%d. %s" % (idx, _sanitize(heading)),
+                          ML, self.y, F_TIMES_B, SZ_HEADING, BLACK)
+            self.y -= SZ_HEADING * 1.4
 
-    def _section_heading(self, section, idx):
-        p = self.page
-        self.pdf.rect(p, ML, self.y - 20, CONTENT_W, 20, None, HEADER_FILL, 0)
-        self.pdf.text(p, "%d. %s" % (idx, _sanitize(section.get("heading", ""))),
-                      ML + 6, self.y - 6, F_HELV_B, FONT_SIZE_HEADING, NAVY)
-        self.pdf.line(p, ML + 6, self.y - 24, ML + CONTENT_W - 6, self.y - 24, NAVY, 0.8)
-        self.y -= 34
+            if section.get("intro"):
+                self._paragraph(section["intro"], underline=(heading == "Input Image"))
+                self.y -= 2.0
+
+            images = self._load_section_images(section)
+            pos = 0
+            for row in self._grid_rows(heading, len(images)):
+                if pos >= len(images):
+                    break
+                if len(row) == 2 and pos + 2 <= len(images):
+                    box_w = (TEXTW - PAIR_GAP) / 2
+                    for col in range(2):
+                        self._draw_figure(images[pos + col],
+                                          ML + col * (box_w + PAIR_GAP), box_w)
+                    pos += 2
+                else:
+                    # row plan doesn't match the loaded figures: render the
+                    # remaining ones full-width and stop planning.
+                    for im in images[pos:]:
+                        self._draw_figure(im, ML, TEXTW)
+                    pos = len(images)
+                    break
+
+            table = section.get("table")
+            if table and table.get("columns") and table.get("rows"):
+                intro = _sanitize(section.get("text") or TABLE_INTROS.get(heading, ""))
+                if intro:
+                    self._paragraph(intro)
+                    self.y -= 4.0
+                self._draw_table(table, heading)
+
+            for note in (section.get("imageNotes") or []):
+                self.ensure(SZ_NOTE * 1.4)
+                self.pdf.text(self.page, _sanitize(note), ML, self.y,
+                              F_TIMES_I, SZ_NOTE, GRAY)
+                self.y -= SZ_NOTE * 1.3
+
+            self.y -= 10.0
+
+    def _grid_rows(self, heading, count):
+        if count == 0:
+            return []
+        rows = GRID_LAYOUTS.get(heading)
+        if not rows or sum(len(r) for r in rows) != count:
+            return [(1,) for _ in range(count)]
+        return rows
 
     def _load_section_images(self, section):
         out = []
@@ -497,7 +576,8 @@ class ReportBuilder:
                 continue
             info = load_image(im["path"])
             if info.get("error"):
-                print("[vns] report: skipping %s -> %s" % (im.get("path"), info["error"]), file=sys.stderr)
+                print("[vns] report: skipping %s -> %s"
+                      % (im.get("path"), info["error"]), file=sys.stderr)
                 continue
             out.append({"caption": im.get("caption") or "", "info": info})
         return out
@@ -519,78 +599,59 @@ class ReportBuilder:
             "smask": smask_name}
         return name
 
-    def _draw_image_grid(self, images):
-        colw = (CONTENT_W - 14) / 2 if len(images) > 1 else min(CONTENT_W, 430)
-        rows = [images[i:i + 2] for i in range(0, len(images), 2)]
-        for row in rows:
-            fit = []
-            for im in row:
-                iw, ih = im["info"]["w"], im["info"]["h"]
-                scale = min(colw / iw, 300.0 / ih)
-                fit.append((im, iw * scale, ih * scale))
-            row_h = max(ch + 32 for (_im, _cw, ch) in fit)
-            self.ensure(row_h + 6)
-            if len(fit) == 1:
-                x = ML + (CONTENT_W - colw) / 2
-            else:
-                total_w = sum(cw for (_im, cw, _ch) in fit) + 14 * (len(fit) - 1)
-                x = ML + (CONTENT_W - total_w) / 2
-            for im, cw, ch in fit:
-                frame_x, frame_h = x, ch + 30
-                self.pdf.rect(self.page, frame_x, self.y - frame_h, cw, frame_h, BORDER, FRAME_FILL, 0.5)
-                name = self._register_image(im["info"])
-                self.pdf.image(self.page, name, frame_x, self.y - ch - 2, cw, ch)
-                self.figure_no += 1
-                cap = "Figure %d: %s" % (self.figure_no, _sanitize(im["caption"]))
-                self.pdf.text(self.page, cap, frame_x, self.y - frame_h + 12,
-                              F_HELV_O, FONT_SIZE_CAPTION, GRAY, align="center", width=cw)
-                x += cw + 14
-            self.y -= row_h
-
-    def _draw_table(self, table):
-        cols = table["columns"]
-        rows = table["rows"]
+    def _draw_table(self, table, heading):
+        cols = [_sanitize(c) for c in table["columns"]]
+        rows = [list(r) for r in table["rows"]]
+        if heading in BLANK_ROWS_SECTIONS and len(rows) == 5:
+            rows += [["", ""], ["", ""]]
         n = len(cols)
-        colw = CONTENT_W / n
-        cell_pad = 4.0
+        colw = TEXTW / n
+        pad = 5.0
+        step = SZ_TABLE * 1.18
+        qa = heading == "Scene Description"
 
-        def cell_lines(cell, header=False):
-            return _wrap(cell, FONT_SIZE_TABLE, colw - cell_pad * 2)
+        def cell_lines(cell, bold):
+            return _wrap(cell, SZ_TABLE, colw - pad * 2, F_TIMES_B if bold else F_TIMES)
 
-        def row_height(cells):
-            return max([len(cell_lines(c)) * (FONT_SIZE_TABLE * 1.3) + cell_pad * 2 for c in cells] or [22])
+        def row_height(cell_values, bold):
+            lines = [cell_lines(c, bold) for c in cell_values]
+            return pad + max(len(L) for L in lines) * step + pad
 
-        def draw_row(cells, y_top, height, header=False):
-            font = F_HELV_B if header else F_HELV
-            for i, c in enumerate(cells):
-                cur = y_top - FONT_SIZE_TABLE
-                bx = ML + i * colw
-                for ln in cell_lines(c):
-                    self.pdf.text(self.page, ln, bx + 4, cur, font, FONT_SIZE_TABLE, BODY)
-                    cur -= FONT_SIZE_TABLE * 1.3
-            return y_top - height
+        def draw_row(cell_values, bold, top):
+            font = F_TIMES_B if bold else F_TIMES
+            for i, cval in enumerate(cell_values):
+                lines = cell_lines(cval, bold)
+                cy = top - pad - SZ_TABLE
+                for ln in lines:
+                    x = ML + i * colw
+                    if qa:
+                        self.pdf.text(self.page, ln, x + pad, cy, font, SZ_TABLE, INK)
+                    else:
+                        self.pdf.text(self.page, ln, x, cy, font, SZ_TABLE, INK,
+                                      align="center", width=colw)
+                    cy -= step
+            return top - row_height(cell_values, bold)
 
-        hh = row_height(cols)
-        self.ensure(hh + 4)
-        self.pdf.rect(self.page, ML, self.y - hh, CONTENT_W, hh, BORDER, HEADER_FILL, 0.5)
-        self.y = draw_row(cols, self.y, hh, header=True)
-        for r_i, row in enumerate(rows):
-            rh = row_height(row)
-            self.ensure(rh + 4)
-            fill = ALT_ROW if r_i % 2 else (255, 255, 255)
-            self.pdf.rect(self.page, ML, self.y - rh, CONTENT_W, rh, BORDER, fill, 0.5)
-            self.y = draw_row(row, self.y, rh)
-        return self.y
-
-    # -- finish -------------------------------------------------------------
+        self.table_no += 1
+        heights = [row_height(cols, True)] + [row_height(r, False) for r in rows]
+        total = sum(heights)
+        self.ensure(total + 8)
+        top = self.y
+        edges = [ML + i * colw for i in range(n + 1)]
+        bottom = draw_row(cols, True, top)
+        for ex in edges:
+            self.pdf.line(self.page, ex, top, ex, bottom, BLACK, 0.5)
+        self.pdf.line(self.page, ML, top, ML + TEXTW, top, BLACK, 0.5)
+        self.pdf.line(self.page, ML, bottom, ML + TEXTW, bottom, BLACK, 0.5)
+        prev = bottom
+        for row in rows:
+            bottom = draw_row(row, False, prev)
+            for ex in edges:
+                self.pdf.line(self.page, ex, prev, ex, bottom, BLACK, 0.5)
+            self.pdf.line(self.page, ML, bottom, ML + TEXTW, bottom, BLACK, 0.5)
+            prev = bottom
+        self.y = bottom    # -- finish -------------------------------------------------------------
     def finalise(self, out_path):
-        total = len(self.pdf.pages)
-        for i, page in enumerate(self.pdf.pages):
-            n = i + 1
-            self.pdf.line(page, ML, MB - 4, PAGE_W - MR, MB - 4, BORDER, 0.4)
-            label = "Page %d of %d" % (n, total)
-            xw = _text_width(label, 8)
-            self.pdf.text(page, label, ML + (CONTENT_W - xw) / 2, MB - 16, F_HELV, 8, GRAY)
         self.pdf.save(out_path)
 
 
@@ -607,13 +668,13 @@ def main(argv):
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest = json.load(f)
 
-    print("[vns] Building Vision Navigation Analysis Report -> %s" % out_path, flush=True)
+    print("[vns] Building Vision Navigation Analysis Report (reference layout) -> %s" % out_path, flush=True)
     builder = ReportBuilder(manifest.get("meta") or {}, manifest.get("sections") or [])
     builder.build_cover()
     builder.build_sections()
     builder.finalise(out_path)
-    print("[vns] Report written: %d pages, %d figures"
-          % (len(builder.pdf.pages), builder.figure_no), flush=True)
+    print("[vns] Report written: %d pages, %d figures, %d tables"
+          % (len(builder.pdf.pages), builder.figure_no, builder.table_no), flush=True)
     return 0
 
 

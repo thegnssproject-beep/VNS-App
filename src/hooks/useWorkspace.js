@@ -222,25 +222,15 @@ export function usePipelineRunner() {
       distanceMap: () => window.workspace.runDistanceMap(inputHint),
       preprocess: () => window.workspace.runPreprocess(inputHint),
       occupancyGrid: () => window.workspace.runOccupancyGrid(inputHint),
+      obstacleDetection: () => window.workspace.runObstacleDetection(inputHint),
       roverHealth: () => window.workspace.runRoverHealth(inputHint),
       navigation: () => window.workspace.runNavigation(inputHint),
       sceneAnalysis: () => window.workspace.runSceneAnalysis(inputHint),
+      telemetry: () => window.workspace.runTelemetry(inputHint || "telemetry"),
     };
     const fn = map[actionId];
     if (!fn) return { ok: false, error: `Unknown action: ${actionId}` };
     return fn();
-  }, []);
-  return { run, available: hasWorkspace };
-}
-
-// Telemetry ("Run Telemetry") — writes the ongoing telemetry/telecommand log
-// into 12_Telemetry_Data / 11_Telecommand_Data.
-export function useTelemetryRunner() {
-  const run = useCallback(async (channel) => {
-    if (!hasWorkspace) {
-      return { ok: false, error: "Pipeline execution is only available in the desktop app." };
-    }
-    return window.workspace.runTelemetry(channel || "telemetry");
   }, []);
   return { run, available: hasWorkspace };
 }

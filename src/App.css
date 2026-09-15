@@ -213,9 +213,9 @@ background-position: center;color: var(--text);
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          height: 100%;
-          max-height: 100vh;
+height: 100vh;
           min-height: 660px;
+          box-sizing: border-box;
           box-shadow: 0 1px 3px rgba(0,0,0,0.5);
           position: relative;
         }
@@ -391,6 +391,9 @@ background-position: center;color: var(--text);
         .topbar__play:hover { background: var(--header-a); }
         .topbar__run-btn { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: hsl(231deg 100% 20.15%); color: var(--text); cursor: pointer; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
         .topbar__run-btn:hover { background: var(--header-a); }
+        .topbar__run-btn:disabled { opacity: 0.65; cursor: default; }
+        .topbar__run-btn:disabled:hover { background: hsl(231deg 100% 20.15%); }
+        .topbar__run-btn--active { border-color: #7ee787; }
         .topbar__title { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center; font-weight: 700; letter-spacing: 0.02em; font-size: 20px; color: #fdfdfd; font-family: var(--font-heading); }
         .topbar__icon { height: 30px; width: 30px; border-radius: 7px; object-fit: cover; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(255,255,255,0.25); }
         .topbar__right { display: flex; align-items: center; gap: 6px; }
@@ -438,8 +441,9 @@ background-position: center;color: var(--text);
         .icon-btn { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid transparent; background: rgba(255,255,255,0.5); color: var(--accent-dark); border-radius: 3px; cursor: pointer; }
         .icon-btn:hover { background: #ffffff; }
         .icon-btn--active { background: var(--success); color: #fff; }
-        .chk { width: 15px; height: 15px; flex-shrink: 0; border-radius: 3px; border: 1.5px solid var(--accent-dark); background: #fff; display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; }
-        .chk--on { background: var(--accent-dark); }
+        .chk { position: relative; width: 16px; height: 16px; flex-shrink: 0; border-radius: 3px; border: 1.5px solid var(--accent-dark); background: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+        .chk--on { background: #fff; border-color: var(--accent); }
+        .chk--on::after { content: "\2713 "; font-size: 12px; font-weight: 800; line-height: 1; color: #0d1b2a; }
 
                 /* Container for the top header bar */
         .input-screen-header {
@@ -933,9 +937,16 @@ background-position: center;color: var(--text);
         }
         .vns--dark .share-list::-webkit-scrollbar-thumb:hover {
           background-image: linear-gradient(180deg, #9ad0f6, #3f8ecf);
-          background-clip: padding-box;
+background-clip: padding-box;
         }
         .share-item { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; }
+        .share-group { display: flex; flex-direction: column; }
+        .share-group__head { display: flex; align-items: center; gap: 4px; }
+        .share-group__head .share-item { flex: 1; }
+        .share-group__heading { flex: 1; font-size: 11px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; }
+        .share-group__windows { display: flex; flex-direction: column; gap: 4px; padding-left: 30px; margin: 3px 0 5px; }
+        .share-window { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--text); opacity: 0.82; cursor: pointer; }
+        .share-window__name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
         .modal__stage--table { aspect-ratio: auto; background: var(--panel); max-height: 70vh; overflow: auto; padding: 4px; }
         .modal__stage--table .data-table th { position: sticky; top: 0; }
@@ -1242,9 +1253,9 @@ background-position: center;color: var(--text);
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          height: 100%;
-          max-height: 100vh;
+height: 100vh;
           min-height: 660px;
+          box-sizing: border-box;
           box-shadow: 0 1px 3px rgba(0,0,0,0.5);
           position: relative;
         }
@@ -1420,6 +1431,9 @@ background-position: center;color: var(--text);
         .topbar__play:hover { background: var(--header-a); }
         .topbar__run-btn { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: hsl(231deg 100% 20.15%); color: var(--text); cursor: pointer; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
         .topbar__run-btn:hover { background: var(--header-a); }
+        .topbar__run-btn:disabled { opacity: 0.65; cursor: default; }
+        .topbar__run-btn:disabled:hover { background: hsl(231deg 100% 20.15%); }
+        .topbar__run-btn--active { border-color: #7ee787; }
         .topbar__title { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center; font-weight: 700; letter-spacing: 0.02em; font-size: 20px; color: #fdfdfd; font-family: var(--font-heading); }
         .topbar__icon { height: 30px; width: 30px; border-radius: 7px; object-fit: cover; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(255,255,255,0.25); }
         .topbar__right { display: flex; align-items: center; gap: 6px; }
@@ -1467,8 +1481,9 @@ background-position: center;color: var(--text);
         .icon-btn { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid transparent; background: rgba(255,255,255,0.5); color: var(--accent-dark); border-radius: 3px; cursor: pointer; }
         .icon-btn:hover { background: #ffffff; }
         .icon-btn--active { background: var(--success); color: #fff; }
-        .chk { width: 15px; height: 15px; flex-shrink: 0; border-radius: 3px; border: 1.5px solid var(--accent-dark); background: #fff; display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; }
-        .chk--on { background: var(--accent-dark); }
+        .chk { position: relative; width: 16px; height: 16px; flex-shrink: 0; border-radius: 3px; border: 1.5px solid var(--accent-dark); background: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+        .chk--on { background: #fff; border-color: var(--accent); }
+        .chk--on::after { content: "\2713 "; font-size: 12px; font-weight: 800; line-height: 1; color: #0d1b2a; }
 
                 /* Container for the top header bar */
         .input-screen-header {
@@ -1962,9 +1977,16 @@ background-position: center;color: var(--text);
         }
         .vns--dark .share-list::-webkit-scrollbar-thumb:hover {
           background-image: linear-gradient(180deg, #9ad0f6, #3f8ecf);
-          background-clip: padding-box;
+background-clip: padding-box;
         }
         .share-item { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; }
+        .share-group { display: flex; flex-direction: column; }
+        .share-group__head { display: flex; align-items: center; gap: 4px; }
+        .share-group__head .share-item { flex: 1; }
+        .share-group__heading { flex: 1; font-size: 11px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; }
+        .share-group__windows { display: flex; flex-direction: column; gap: 4px; padding-left: 30px; margin: 3px 0 5px; }
+        .share-window { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--text); opacity: 0.82; cursor: pointer; }
+        .share-window__name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
         .modal__stage--table { aspect-ratio: auto; background: var(--panel); max-height: 70vh; overflow: auto; padding: 4px; }
         .modal__stage--table .data-table th { position: sticky; top: 0; }

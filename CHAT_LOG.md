@@ -4,7 +4,7 @@
 > without losing context. Lives next to `README.md` in the project root.
 
 **Project root:** `C:\YousufVNS\vns-app\vns-app`
-**Last updated (work state):** Section 24 DONE — generated report is now a ditto copy of `Report Layout.docx` (decoded from the .docx XML): A4 page, Times, cover page with the template's "Visison Navigation Analysis Report" / "Image ID: <session>" / "Date:" block, then numbered 1..9 bold-14 heading "N. <Heading>", intro sentence (the "captured on <date>, at <time>" intro and the Left/Right camera captions keep their template underlines), per-section figure grids (full-width stacks, side-by-side pairs, preprocess = 2 pairs + full-width rectified, VO = pair + full-width localization) captioned "Figure N: …" below each image (numbering runs 1..25), and bold-headed Parameter/Value (or User Query/AI Response) tables with a 0.5pt grid; the first four sections keep the template's two trailing empty rows. `report.py` rewritten (IEEE title block/two columns/Roman headings/footer removed); `PdfBuilder.text` gained an `underline` flag; `scripts/bin/report.exe` rebuilt. Verified: 12 pages / 25 figures / 9 tables, .py and .exe byte-identical (356649). Sample: `15_Report/session_2026-09-15T05-45-52-432Z/Report_Layout_Sample.pdf`. Section 23 (IEEE style) superseded. §22 DONE — (22.1) all bottom-right `.exe` buttons removed (input/obsdet/safepath/distmap/navigation/sceneanalysis/data/telecommand/telemetry exe): the per-window ▶ buttons run the identical stage via `useStageRun`/`WindowRunButton`/`ConsoleResultModal`. `PipelineRunButton`, the Obs. Det. bespoke `runResult` modal + `handleRunDetection`, and `useTelemetryRunner` deleted (telemetry refresh still via panel ▶). (22.2) Telemetry tab "Refresh Logs" sidebar now has **Telecommand / Telemetry headings with TC1–3 / TM1–3 checkboxes** that filter rows 1–3 of each log table (rows beyond 3 always shown). (22.3) Data tab sidebar made the same style: **every possible window sub-heading is now always listed** under each tab heading (via module `WINDOW_ITEMS`), master tab checkbox kept, collapse chevron removed. ESLint down to 10 pre-existing `set-state-in-effect` (2 preserve-memo errors gone). (22.4) Telemetry page-level `Telemetry & Telecommand` `section__title` heading removed (table `panel__title` headings kept). (22.5) Topbar **Run Algorithms button kept its name but now runs all tabs sequentially** (input copy → preprocess → obstacleDetection → occupancyGrid → safePath → distanceMap → navigation → sceneAnalysis → telemetry×2 → roverHealth), single runSignal bump + pass/fail summary toast, "Running…" while busy. Prior: §21 — Data-tab sub-window ▶ run buttons → checkboxes for report sub-heading include/exclude. `npm run build` passes; lint = only pre-existing errors.
+**Last updated (work state):** Section 25 DONE — heading/sub-heading checkboxes in the Data & Telemetry tabs now show a **CSS tick (✓) with no fill** when selected (`.chk--on` is white, border turns accent; tick via `.chk--on::after { content:"\2713" }`); both `Checkbox` components (VNSApp.jsx + CustomScreens.jsx) lost their lucide `Check` icon (unused import removed). Two identical copies of the stylesheet in App.css were both updated. Broad work pushed to GitHub as commit `bdb376f` → `origin/main` (07 files: §24 report layout + §22 checklists/Run-All/topbar + §25 ticks). After an app restart the telemetry log reads empty until the workspace folder is re-picked (design: no persistence of root/session; data is on disk). §22 DONE — (22.1) all bottom-right `.exe` buttons removed (input/obsdet/safepath/distmap/navigation/sceneanalysis/data/telecommand/telemetry exe): the per-window ▶ buttons run the identical stage via `useStageRun`/`WindowRunButton`/`ConsoleResultModal`. `PipelineRunButton`, the Obs. Det. bespoke `runResult` modal + `handleRunDetection`, and `useTelemetryRunner` deleted (telemetry refresh still via panel ▶). (22.2) Telemetry tab "Refresh Logs" sidebar now has **Telecommand / Telemetry headings with TC1–3 / TM1–3 checkboxes** that filter rows 1–3 of each log table (rows beyond 3 always shown). (22.3) Data tab sidebar made the same style: **every possible window sub-heading is now always listed** under each tab heading (via module `WINDOW_ITEMS`), master tab checkbox kept, collapse chevron removed. ESLint down to 10 pre-existing `set-state-in-effect` (2 preserve-memo errors gone). (22.4) Telemetry page-level `Telemetry & Telecommand` `section__title` heading removed (table `panel__title` headings kept). (22.5) Topbar **Run Algorithms button kept its name but now runs all tabs sequentially** (input copy → preprocess → obstacleDetection → occupancyGrid → safePath → distanceMap → navigation → sceneAnalysis → telemetry×2 → roverHealth), single runSignal bump + pass/fail summary toast, "Running…" while busy. §24 DONE — generated report is now a ditto copy of `Report Layout.docx` (A4, Times, cover page with "Visison Navigation Analysis Report"/"Image ID"/"Date:", numbered 1..9 bold headings, per-section figure grids captioned "Figure N:" running 1..25, Parameter/Value + QA tables with 0.5pt grid; report.py rewritten, `report.exe` rebuilt; verified 12 pages / 25 figures / 9 tables, .py/.exe byte-identical). Prior: §21 — Data-tab sub-window ▶ run buttons → checkboxes for report sub-heading include/exclude. `npm run build` passes; lint = only pre-existing errors.
 
 ---
 
@@ -1102,5 +1102,42 @@ intro sentences, captions and Property/QA tables.
   each window still runs + shows the console modal, Telemetry's Refresh Logs
   box shows TC1–3 / TM1–3 that hide/show rows 1–3, and the Data sidebar lists
   every tab's window checkboxes permanently under each heading.
+
+### 25 Heading/sub-heading checkboxes: tick (not filled box)
+
+User: in the **Data** and **Telemetry** tabs, selecting a heading / sub-heading
+should show a **tick in the box**, not a filled/blocked box.
+
+Root cause: `.chk--on { background: var(--accent-dark) }` filled the whole
+15px box solid navy (= "black filled up box"); the lucide `Check` icon was
+white-on-dark and mostly invisible.
+
+Fixes in `src/App.css` (BOTH copies of the stylesheet are identical and must
+be edited in lock-step — the file contains the block twice):
+1. `.chk` → 16px, `background:#fff`, `display:inline-flex`,
+   `border:1.5px solid var(--accent-dark)`.
+2. `.chk--on` → `background:#fff; border-color:var(--accent)` (NO fill).
+3. Tick rendered by CSS so it cannot vanish:
+   `.chk--on::after { content:"\2713 "; font-size:12px; font-weight:800; color:#0d1b2a }`.
+
+JSX: both `Checkbox` components (`src/VNSApp.jsx` ~331 and
+`src/CustomScreens.jsx` ~31) now return a plain `<button className="chk…" />
+` with **no lucide icon** — the ✓ comes purely from the `::after` glyph; the
+`Check` import was removed from both files. All checkboxes share this look:
+Data's "Tabs to include in report" (tab + window sub-heading toggles), the
+Telemetry TC/TM row filters, and every panel checkbox.
+
+Unrelated note (no code change): after an app restart the telemetry log
+appears empty because the workspace root + active session are intentionally
+NOT restored on fresh launch — re-pick the workspace folder and the log
+reloads. Data still on disk: top-level `12_Telemetry_Data/Telemetry.json`
+(VO distance/coords rows) and `03_Input_Image/<session>/11_Telecommand_Data`
+(TC001–004).
+
+Pushed to GitHub: commit `bdb376f` (7 files) → `origin/main`
+(`059d192..bdb376f`). Left uncommitted by design:
+`scripts/pipeline/__pycache__/report.cpython-314.pyc` (build artifact) and
+`release_selfcontained.zip` (stray artifact of the reverted self-contained
+backend experiment).
 
 

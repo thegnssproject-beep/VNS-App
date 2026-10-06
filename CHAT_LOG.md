@@ -1253,5 +1253,12 @@ Task: ship **ONE exe** containing frontend + backend + database for a single-sys
 - Committed & pushed as `1436764` → `origin/main` (17 files); left out by
   design: `scripts/pipeline/__pycache__`, root `__pycache__/`,
   `release_selfcontained.zip`, `release/` (gitignored build output).
+- **Exe also committed to the repo** (user request): `.gitignore` now ignores
+  `release/*` EXCEPT the shipped binary, and `release/vns-app 0.0.0.exe`
+  (100,499,340 B) was pushed as `1d75b3b` → `origin/main`. GitHub warned
+  (95.84 MB > 50 MB recommendation, LFS suggested) but accepted it — it is
+  under the 100 MB hard limit. Note: each future rebuild adds another ~100 MB
+  to repo history, and the exe now exists in two places (repo file + v0.1.0
+  release asset). README's Download section lists both routes.
 
 

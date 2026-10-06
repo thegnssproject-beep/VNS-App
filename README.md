@@ -24,10 +24,16 @@ MySQL to install — see [Single-file deployment](#single-file-deployment-the-de
 
 ## Download (ready-to-run exe)
 
-**→ [GitHub Releases: v0.1.0](https://github.com/thegnssproject-beep/VNS-App/releases/tag/v0.1.0)**
+Two ways to get the same file — `vns-app 0.0.0.exe` (~96 MB):
 
-Download `vns-app.0.0.0.exe` (~96 MB) and double-click it on any Windows
-10/11 PC — no installer, no admin rights, no Node/Python/MySQL, no internet.
+1. **[GitHub Releases: v0.1.0](https://github.com/thegnssproject-beep/VNS-App/releases/tag/v0.1.0)**
+   — asset `vns-app.0.0.0.exe` (one-click download).
+2. **In this repo** — checked in at
+   [`release/vns-app 0.0.0.exe`](release/vns-app%200.0.0.exe), next to the
+   source it was built from.
+
+Double-click it on any Windows 10/11 PC — no installer, no admin rights, no
+Node/Python/MySQL, no internet.
 
 - First launch takes ~30 s (self-extraction), then the login window opens.
 - **Login:** `admin@vns.local` / `VNSProject` (accounts are per-machine —

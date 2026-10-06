@@ -3,6 +3,7 @@ node_modules/
 server/node_modules/
 dist/
 release/
+release.zip
 
 # environment & secrets
 .env

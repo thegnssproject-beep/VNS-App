@@ -2,8 +2,9 @@
 
 Mission-console desktop app for rover vision/navigation pipelines. A React
 frontend (multi-tab mission console) runs inside an Electron shell that
-reads/writes rover data files on disk, backed by a local Express + MySQL
-server for authentication and user roles.
+reads/writes rover data files on disk, backed by an **embedded Express +
+SQLite backend that ships inside the app itself** (no separate server or
+MySQL to install — see [Single-file deployment](#single-file-deployment-the-deliverable)).
 
 ## Table of contents
 
@@ -17,25 +18,33 @@ server for authentication and user roles.
 - [Scripts & pipeline executables](#scripts--pipeline-executables)
 - [Replacing the pipeline executables (step-by-step)](#replacing-the-pipeline-executables-step-by-step)
 - [Feeds & reading data](#feeds--reading-data)
+- [Single-file deployment (the deliverable)](#single-file-deployment-the-deliverable)
 - [Packaging & delivery](#packaging--delivery)
 
 ## Stack
 
 - **Electron** (`electron/main.cjs`) — filesystem engine, IPC bridge,
-  PDF report generation, session management.
+  PDF report generation, session management; also **starts the embedded
+  backend** on `127.0.0.1:4000` when the app launches.
 - **React + Vite** (`src/`) — the mission-console UI.
-- **Express + MySQL** (`server/`) — auth, admin, and role-request API.
+- **Express + better-sqlite3** (`electron/server/`) — auth, admin, and
+  role-request API running **inside the Electron process**, backed by an
+  unencrypted SQLite file at `%APPDATA%\vns-app\vns.db` (schema + admin
+  seeded on first launch).
 - **bcryptjs + cookie sessions** — password hashing and session auth.
 - **Python pipeline engines** (`scripts/pipeline/*.py`, compiled to
   `scripts/bin/*.exe`) — the vision/navigation stage logic driven by the
-  per-tab run buttons.
+  per-window ▶ run buttons.
+- `server/` (the original external Express + MySQL backend) is kept in the
+  repo for reference but is **no longer started or used**.
 
 ## Project layout
 
 ```
 electron/          Electron main/preload (IPC to disk, reports, PDFs)
+electron/server/   Embedded backend: Express app, SQLite db bootstrap, auth/admin/role routes
 src/               React app (VNSApp.jsx, hooks, auth screens)
-server/            Express backend (index.js, routes/, schema.sql, .env)
+server/            LEGACY external Express + MySQL backend (unused since §27)
 scripts/pipeline/  Python stage sources (pure stdlib, one per stage)
 scripts/bin/       Compiled stage executables (*.exe) bundled with the app
 build/             App icons for electron-builder
@@ -54,7 +63,7 @@ during development are listed; `^` ranges in `package.json` pin the minimums.
 | npm | **12.0.2** (ships with Node 24) | installing JS dependencies |
 | Python | **3.14.7** | only to rebuild the placeholder stage exes or the `.py` fallback — **not** needed to *run* the app (the shipped app uses standalone exes) |
 | PyInstaller | **6.22.2** (`python -m pip install pyinstaller`) | compiling `scripts/pipeline/*.py` → `scripts/bin/*.exe` |
-| MySQL | **8.0.46** (portable, `mysql-8.0.46-winx64`) | backend database (`vns_app`) |
+| MySQL | 8.0.46 (portable) | **NOT required anymore** — only for the legacy `server/` backend (see below) |
 | Git | 2.55 (optional) | pulling the source |
 
 Key dependency versions resolved by `npm install`:
@@ -62,8 +71,9 @@ Key dependency versions resolved by `npm install`:
 - Electron `^31.0.0`, electron-builder `^24.13.3`, Vite `^8.1.1`,
   React/ReactDOM `^19.2.7`, lucide-react `^1.24.0`, sharp `^0.33.5`
   (native — prebuilt binaries, no compiler needed)
-- Backend (`server/`): Express `^4.19.2`, mysql2 `^3.11.0`, bcryptjs
-  `^2.4.3`, dotenv `^16.4.5`, cookie-parser `^1.4.6`, cors `^2.8.5`
+- Embedded backend (`electron/server/`): Express `^4.19.2`,
+  better-sqlite3 `^12.2.0` (native — prebuilt binary installed), bcryptjs
+  `^2.4.3`, cookie-parser `^1.4.6`, cors `^2.8.5`
 
 ## Environment setup (one-time)
 
@@ -88,75 +98,36 @@ Python/PyInstaller are not required to *run* the app — they are only used to
 recompile the placeholder stage exes from the `.py` sources (see
 [Replacing the pipeline executables](#replacing-the-pipeline-executables-step-by-step)).
 
-### 3. Portable MySQL
-
-`start-dev.ps1` expects the portable server at `C:\YousufVNS\mysql\mysql-8.0.46-winx64`
-(the `$mysqlDir` variable at the top of the script — change it there if your
-path differs). No Windows service or global MySQL install is required.
-
-Download the **mysql-8.0.46-winx64.zip** archive from dev.mysql.com, extract it,
-and move the folder to that path.
-
-### 4. Backend environment file
-
-`server/` needs a populated `server/.env`. There is no committed example — copy
-the working `server/.env` from this project, or create it from the template:
-
-```ini
-# server/.env
-PORT=4000                          # Express API port
-CORS_ORIGIN=http://localhost:5173  # Vite dev origin allowed by CORS
-DB_HOST=127.0.0.1                  # MySQL host
-DB_PORT=3306                       # MySQL port
-DB_USER=root
-DB_PASSWORD=sahiba2006             # must match the root password you set in step 5
-DB_NAME=vns_app
-NODE_ENV=development
-```
-
-### 5. Bootstrap the database (once)
+### 3. Install dependencies
 
 ```powershell
-$mysqlBin = "C:\YousufVNS\mysql\mysql-8.0.46-winx64\bin"
-
-# first time only — initialize an empty data directory
-& "$mysqlBin\mysqld.exe" --defaults-file="C:\YousufVNS\mysql\mysql-8.0.46-winx64\my.ini" --initialize-insecure
-
-# start the server (every time)
-& "$mysqlBin\mysqld.exe" --defaults-file="C:\YousufVNS\mysql\mysql-8.0.46-winx64\my.ini"
-
-# set the root password + create the database (password must match server/.env)
-& "$mysqlBin\mysql.exe" -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'sahiba2006'; CREATE DATABASE vns_app CHARACTER SET utf8mb4;"
-
-# load the schema
-Get-Content server\schema.sql -Raw | & "$mysqlBin\mysql.exe" -u root -psahiba2006 vns_app
+npm install          # frontend + Electron + embedded backend deps
 ```
 
-### 6. Install dependencies
-
-```powershell
-npm install          # root (frontend + Electron)
-Push-Location server
-npm install          # backend dependencies
-Pop-Location
-```
+> **No MySQL setup is needed.** The database is created automatically the
+> first time the app launches (`%APPDATA%\vns-app\vns.db`, plain SQLite,
+> admin seeded).
+>
+> **Legacy — external MySQL backend (`server/`):** the previous architecture
+> (portable MySQL 8.0.46 at `C:\YousufVNS\mysql\mysql-8.0.46-winx64`, a
+> `server/.env` with the DB credentials, `server/schema.sql` loaded once, and
+> `npm install` inside `server/`) is still documented in git history and the
+> `server/` folder, but nothing in the app starts or uses it anymore. Only
+> pursue it if you deliberately want a shared multi-machine backend — and
+> note port 4000 can't be held by both it and the embedded server at once.
 
 ## Quick start
 
-Everything in one command (MySQL → backend → Electron app):
+Everything in one command (Vite + Electron; the backend starts with the app):
 
 ```powershell
-.\start-dev.ps1        # MySQL -> backend -> Electron app
-.\start-dev.ps1 -NoApp # MySQL + backend only
+.\start-dev.ps1        # Vite + Electron (embedded backend on :4000)
+.\stop-dev.ps1         # stop the app
 ```
 
-Each component is only started if it isn't already running, so it's safe to
-re-run. Shut everything down with:
-
-```powershell
-.\stop-dev.ps1            # app + backend + MySQL
-.\stop-dev.ps1 -KeepMysql # app + backend only (leave MySQL up)
-```
+Each piece is only started if it isn't already running, so it's safe to
+re-run. On the first launch the embedded backend creates
+`%APPDATA%\vns-app\vns.db`, loads the schema and seeds the admin account.
 
 Open the app window (or `http://localhost:5173` in a browser) and log in with
 `admin@vns.local` / `VNSProject`.
@@ -164,38 +135,36 @@ Open the app window (or `http://localhost:5173` in a browser) and log in with
 ### Starting each piece manually
 
 ```powershell
-# MySQL (see step 5 of Environment setup) — then:
-Push-Location server
-node index.js          # Express API on http://localhost:4000  (or: npm run dev)
-Pop-Location
-
-npm run electron:dev   # Vite on :5173 + Electron window
+npm run electron:dev   # Vite on :5173 + Electron window (embedded backend)
 # or just: npm run dev # browser-only (no Electron IPC bridge)
 ```
 
+> If port 4000 is busy at launch, a leftover process is holding it (often an
+> old external backend from `server/`, or another copy of the app). The
+> startup script warns about it; free the port before launching.
+
 ## Accounts & roles
 
-> **Default admin (bootstrap):**
+> **Default admin (bootstrap):** seeded automatically into the database on
+> first launch.
 >
 > - **Email:** `admin@vns.local`
 > - **Password:** `VNSProject`
 
-New sign-ups start as **viewer**. Admins can:
-- promote users via the **Admin Panel** (admin menu),
+Accounts live in the SQLite database `%APPDATA%\vns-app\vns.db` (plain file —
+open it with any SQLite tool, e.g. `sqlite3`, DB Browser for SQLite, or
+`python -c "import sqlite3; ..."`). **Accounts are per-machine**: each
+installed copy has its own user list.
+
+New sign-ups start as **viewer** and stay `pending` until an admin approves
+them (Admin Panel → Pending New Accounts). Admins can:
+- approve/reject users and set their role via the **Admin Panel**,
 - or approve editor role requests from the **Role Request** flow.
 
-To promote someone directly in SQL:
+To promote someone directly in the database:
 
 ```sql
-UPDATE users SET role = 'admin' WHERE email = 'someone@example.com';
-```
-
-To create a fresh admin from scratch (bcrypt-hash the password first, e.g.
-with `bcryptjs`):
-
-```sql
-INSERT INTO users (full_name, email, password_hash, role)
-VALUES ('Admin', 'admin@vns.local', '<bcrypt-hash>', 'admin');
+UPDATE users SET role = 'admin', status = 'active' WHERE email = 'someone@example.com';
 ```
 
 ## Workspace folders
@@ -336,26 +305,62 @@ the buttons return *"No Workspace Folder selected"*.)
 - **Share** on a tab writes each checked panel's image + `properties.json`
   into `16_Output/<session>/<Window Label>/`.
 
+## Single-file deployment (the deliverable)
+
+The whole application — **frontend + backend + database engine + all pipeline
+executables** — ships as ONE portable file:
+
+```
+release\vns-app 0.0.0.exe     (~96 MB, 100,499,340 bytes)
+```
+
+**How to deploy:** copy that single `.exe` to any Windows 10/11 machine and
+double-click it. No installer, no admin rights, no Node, no Python, no MySQL,
+no internet. On first launch it extracts to `%TEMP%`, creates
+`%APPDATA%\vns-app\vns.db` (schema + seeded admin), starts the backend on
+`127.0.0.1:4000` and opens the login window. First launch takes ~30 s
+(self-extraction); later launches are fast.
+
+What's inside:
+
+| Layer | Location in the exe | Notes |
+|-------|---------------------|-------|
+| React UI | `resources\app.asar` → `dist/` | built by Vite |
+| Express backend | `resources\app.asar` → `electron/server/` | runs in the Electron main process |
+| SQLite engine | `resources\app.asar.unpacked\node_modules\better-sqlite3` | native module |
+| Pipeline stage exes | `resources\app.asar.unpacked\scripts\bin\` | all 10 stages |
+| Database file | `%APPDATA%\vns-app\vns.db` (outside the exe) | plain, unencrypted; persists across runs |
+
+Workspace data (images, pipeline outputs, reports) is still read/written from
+the workspace folder the user selects inside the app — the exe holds the
+program and the account database, not rover data.
+
+**QA performed on the built exe:** launches, backend answers `/api/health`,
+admin login + session restore OK, DB seeded with the full schema, signup →
+admin-approval flow exercised through the packaged UI, all 10 stage exes
+present, and no "Forgot password?" link in the UI.
+
 ## Packaging & delivery
 
 ```bash
 npm run electron:build   # vite build && electron-builder -> release/
 ```
 
-Windows installer output lands in `release/`. Build config lives in
-`package.json` (`build.files`, icons, `asarUnpack`, etc.). The placeholder exes
-ship bundled in `scripts/bin/**` and are un-packed to
-`<install>\resources\app.asar.unpacked\scripts\bin\`, so the delivered app runs
-every stage out of the box; production binaries override via
+The configured Windows target is **portable**, so the output is the single
+`release\vns-app 0.0.0.exe` (plus the intermediate `release\win-unpacked\`
+folder used during the build). Build config lives in `package.json`
+(`build.files`, `build.win.target`, icons, `asarUnpack`, etc.). The placeholder
+stage exes ship bundled in `scripts/bin/**` and are un-packed to
+`resources\app.asar.unpacked\scripts\bin\`, so the delivered exe runs every
+stage out of the box; production binaries override via
 `<workspace root>\bin\` (see
 [Replacing the pipeline executables](#replacing-the-pipeline-executables-step-by-step)).
 
-> **Note:** the installer ships the **Electron shell** (UI + pipeline exes).
-> The Express backend (`server/`) and the MySQL `vns_app` database are separate
-> and must be running on the machine (e.g. via `start-dev.ps1`) because login
-> authenticates against `http://localhost:4000`. Target machines do **not**
-> need Node, npm, Python, or a MySQL service installed — just the portable
-> MySQL directory and the backend, started with the launch script.
+> **Note:** the exe now ships the **entire stack** — Electron shell (UI),
+> the embedded Express backend and the SQLite database bootstrap, plus the
+> pipeline exes. Target machines do **not** need Node, npm, Python, MySQL, or
+> the `server/` folder; login authenticates against the backend inside the
+> app itself (`http://localhost:4000`).
 
 ### Build notes (read before packaging)
 
@@ -363,13 +368,23 @@ every stage out of the box; production binaries override via
   changed back to the default absolute base, the packaged window shows a blank
   white screen (the built `dist/index.html` resolves `/assets/...` against the
   drive root over `file://` instead of the app folder).
-- **Run `electron-builder` from an elevated (admin) PowerShell.** On this
-  machine the `winCodeSign` binary cache is extracted with 7-zip, which needs
-  the `SeCreateSymbolicLinkPrivilege` to create two macOS-library symlinks
-  (`darwin/10.12/lib/lib{crypto,ssl}.dylib`); without elevation the build fails
-  on that extraction step.
-- **Close the app before rebuilding.** If you launch the portable copy
-  `release\win-unpacked\vns-app.exe` and leave it running while you rebuild,
+- **Run `electron-builder` from an elevated (admin) PowerShell when the
+  `winCodeSign` cache is cold.** On this machine the cache is extracted with
+  7-zip, which needs `SeCreateSymbolicLinkPrivilege` to create two
+  macOS-library symlinks (`darwin/10.12/lib/lib{crypto,ssl}.dylib`); without
+  elevation that extraction step fails. If
+  `%LOCALAPPDATA%\electron-builder\Cache` already contains `winCodeSign` +
+  `nsis` (as it does after the first successful build), a normal shell works.
+- **npm blocks install scripts unless approved.** npm 12 only runs
+  `better-sqlite3`, `electron` and `sharp`'s install scripts because they are
+  allow-listed under `allowScripts` in `package.json` (approved via
+  `npm install-scripts approve <pkg>`). If you add a new native dependency,
+  approve it the same way or its binary won't build. After a fresh
+  `npm install`, `npx @electron/rebuild -f -w better-sqlite3` rebuilds the
+  native module against Electron for dev mode (electron-builder redoes this
+  itself at package time).
+- **Close the app before rebuilding.** If you leave the portable exe (or
+  `release\win-unpacked\vns-app.exe`) running while you rebuild,
   `electron-builder` fails clearing `release\` with
   `remove ...d3dcompiler_47.dll: Access is denied` (the build may also leave a
   stale, half-cleaned output). Quit the app — or delete `release\` manually —

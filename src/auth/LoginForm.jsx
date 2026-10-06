@@ -145,9 +145,11 @@ export default function LoginForm({ onSwitchToSignup }) {
                   {submitting ? "Signing In..." : "Login"}
                 </button>
                 <div className="auth-links">
+                  {/* "Forgot password?" link hidden by user request (backend endpoints kept).
                   <button type="button" className="authlink" onClick={() => { setRecovery("forgot"); setError(""); setRecoveryMsg(""); }}>
                     Forgot password?
                   </button>
+                  */}
                   <button type="button" className="authlink" onClick={onSwitchToSignup}>
                     Don't have an account? Sign Up
                   </button>

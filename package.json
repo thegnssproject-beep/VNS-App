@@ -1,5 +1,5 @@
 {
-"name": "vns-app",
+  "name": "vns-app",
   "private": true,
   "version": "0.0.0",
   "description": "VNS Mission Console — rover vision/navigation pipeline desktop app",
@@ -14,7 +14,12 @@
     "electron:build": "vite build && electron-builder"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.2.0",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
     "electron-store": "^8.2.0",
+    "express": "^4.19.2",
     "lucide-react": "^1.24.0",
     "pdf-parse": "^1.1.4",
     "react": "^19.2.7",
@@ -45,13 +50,17 @@
       "scripts/**/*"
     ],
     "asarUnpack": [
-      "scripts/bin/**/*"
+      "scripts/bin/**/*",
+      "node_modules/better-sqlite3/**/*"
     ],
     "directories": {
       "output": "release"
     },
     "win": {
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "target": [
+        "portable"
+      ]
     },
     "linux": {
       "icon": "build/icon.png"
@@ -59,5 +68,10 @@
     "mac": {
       "icon": "build/icon.png"
     }
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "electron@31.7.7": true,
+    "sharp@0.33.5": true
   }
 }

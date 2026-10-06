@@ -4,7 +4,7 @@
 > without losing context. Lives next to `README.md` in the project root.
 
 **Project root:** `C:\YousufVNS\vns-app\vns-app`
-**Last updated (work state):** Section 25 DONE — heading/sub-heading checkboxes in the Data & Telemetry tabs now show a **CSS tick (✓) with no fill** when selected (`.chk--on` is white, border turns accent; tick via `.chk--on::after { content:"\2713" }`); both `Checkbox` components (VNSApp.jsx + CustomScreens.jsx) lost their lucide `Check` icon (unused import removed). Two identical copies of the stylesheet in App.css were both updated. Broad work pushed to GitHub as commit `bdb376f` → `origin/main` (07 files: §24 report layout + §22 checklists/Run-All/topbar + §25 ticks). After an app restart the telemetry log reads empty until the workspace folder is re-picked (design: no persistence of root/session; data is on disk). §22 DONE — (22.1) all bottom-right `.exe` buttons removed (input/obsdet/safepath/distmap/navigation/sceneanalysis/data/telecommand/telemetry exe): the per-window ▶ buttons run the identical stage via `useStageRun`/`WindowRunButton`/`ConsoleResultModal`. `PipelineRunButton`, the Obs. Det. bespoke `runResult` modal + `handleRunDetection`, and `useTelemetryRunner` deleted (telemetry refresh still via panel ▶). (22.2) Telemetry tab "Refresh Logs" sidebar now has **Telecommand / Telemetry headings with TC1–3 / TM1–3 checkboxes** that filter rows 1–3 of each log table (rows beyond 3 always shown). (22.3) Data tab sidebar made the same style: **every possible window sub-heading is now always listed** under each tab heading (via module `WINDOW_ITEMS`), master tab checkbox kept, collapse chevron removed. ESLint down to 10 pre-existing `set-state-in-effect` (2 preserve-memo errors gone). (22.4) Telemetry page-level `Telemetry & Telecommand` `section__title` heading removed (table `panel__title` headings kept). (22.5) Topbar **Run Algorithms button kept its name but now runs all tabs sequentially** (input copy → preprocess → obstacleDetection → occupancyGrid → safePath → distanceMap → navigation → sceneAnalysis → telemetry×2 → roverHealth), single runSignal bump + pass/fail summary toast, "Running…" while busy. §24 DONE — generated report is now a ditto copy of `Report Layout.docx` (A4, Times, cover page with "Visison Navigation Analysis Report"/"Image ID"/"Date:", numbered 1..9 bold headings, per-section figure grids captioned "Figure N:" running 1..25, Parameter/Value + QA tables with 0.5pt grid; report.py rewritten, `report.exe` rebuilt; verified 12 pages / 25 figures / 9 tables, .py/.exe byte-identical). Prior: §21 — Data-tab sub-window ▶ run buttons → checkboxes for report sub-heading include/exclude. `npm run build` passes; lint = only pre-existing errors.
+**Last updated (work state):** Section 27 DONE — single-file deployment built: `release\vns-app 0.0.0.exe` (portable, 96 MB) embeds frontend + Express/SQLite backend + all 10 stage exes; README.md, CHAT_LOG.md and VNS_Project_Report.pdf refreshed to match (§27.1). Section 26 DONE — `make_project_report.py` (project root) generates **VNS_Project_Report.pdf** (9 pages: cover + Contents + 7 body pages) straight from CHAT_LOG.md via the report PdfBuilder (two-pass: pass-1 records true section start pages after `h1()`, pass-2 adds the Contents page with those numbers +1). TOC verified to exactly match physical pages. PDF copied to `15_Report/session_2026-09-15T05-45-52-432Z/`; not yet pushed to GitHub. Section 25 DONE — heading/sub-heading checkboxes in the Data & Telemetry tabs now show a **CSS tick (✓) with no fill** when selected (`.chk--on` is white, border turns accent; tick via `.chk--on::after { content:"\2713" }`); both `Checkbox` components (VNSApp.jsx + CustomScreens.jsx) lost their lucide `Check` icon (unused import removed). Two identical copies of the stylesheet in App.css were both updated. Broad work pushed to GitHub as commit `bdb376f` → `origin/main` (07 files: §24 report layout + §22 checklists/Run-All/topbar + §25 ticks). After an app restart the telemetry log reads empty until the workspace folder is re-picked (design: no persistence of root/session; data is on disk). §22 DONE — (22.1) all bottom-right `.exe` buttons removed (input/obsdet/safepath/distmap/navigation/sceneanalysis/data/telecommand/telemetry exe): the per-window ▶ buttons run the identical stage via `useStageRun`/`WindowRunButton`/`ConsoleResultModal`. `PipelineRunButton`, the Obs. Det. bespoke `runResult` modal + `handleRunDetection`, and `useTelemetryRunner` deleted (telemetry refresh still via panel ▶). (22.2) Telemetry tab "Refresh Logs" sidebar now has **Telecommand / Telemetry headings with TC1–3 / TM1–3 checkboxes** that filter rows 1–3 of each log table (rows beyond 3 always shown). (22.3) Data tab sidebar made the same style: **every possible window sub-heading is now always listed** under each tab heading (via module `WINDOW_ITEMS`), master tab checkbox kept, collapse chevron removed. ESLint down to 10 pre-existing `set-state-in-effect` (2 preserve-memo errors gone). (22.4) Telemetry page-level `Telemetry & Telecommand` `section__title` heading removed (table `panel__title` headings kept). (22.5) Topbar **Run Algorithms button kept its name but now runs all tabs sequentially** (input copy → preprocess → obstacleDetection → occupancyGrid → safePath → distanceMap → navigation → sceneAnalysis → telemetry×2 → roverHealth), single runSignal bump + pass/fail summary toast, "Running…" while busy. §24 DONE — generated report is now a ditto copy of `Report Layout.docx` (A4, Times, cover page with "Visison Navigation Analysis Report"/"Image ID"/"Date:", numbered 1..9 bold headings, per-section figure grids captioned "Figure N:" running 1..25, Parameter/Value + QA tables with 0.5pt grid; report.py rewritten, `report.exe` rebuilt; verified 12 pages / 25 figures / 9 tables, .py/.exe byte-identical). Prior: §21 — Data-tab sub-window ▶ run buttons → checkboxes for report sub-heading include/exclude. `npm run build` passes; lint = only pre-existing errors.
 
 ---
 
@@ -22,16 +22,27 @@ issues, and the pending item with the RAR password.
 Everything is scripted. From the project root:
 
 ```
-.\start-dev.ps1     # starts MySQL + backend + Electron app
-.\stop-dev.ps1      # stops app + backend + MySQL (use -KeepMysql to keep DB up)
+.\start-dev.ps1     # launches Vite + Electron (embedded backend starts with the app)
+.\stop-dev.ps1      # stops the app (closing it also shuts the embedded backend)
 ```
 
-- MySQL (portable 8.0.46): `C:\YousufVNS\mysql\mysql-8.0.46-winx64`
-- Backend API: `http://localhost:4000` (`/api/health`)
+- **Self-contained since §27:** the Express backend runs inside the Electron
+  main process on `http://localhost:4000` (`/api/health`) and the database is
+  an unencrypted SQLite file at `%APPDATA%\vns-app\vns.db` (schema + admin
+  seeded on first launch). No MySQL, no separate backend process.
 - App / login: `http://localhost:5173` (Electron window title `vns-app`)
+- **Deployment:** `release\vns-app 0.0.0.exe` (~96 MB portable) — one file,
+  double-click to run on any Windows PC (frontend + backend + DB engine +
+  stage exes inside).
 
 **Admin login:** `admin@vns.local` / `VNSProject`
-(role admin; bcrypt hash `$2a$10$sD2iusU.HBdYrkSkwqiJ7e3Dt4fSPASBiSkOf6TMpr6YSEF.5Tyh2` in `vns_app.users` id=1)
+(role admin; seeded automatically into `vns.db` users id=1 — same bcrypt hash
+as before: `$2a$10$sD2iusU.HBdYrkSkwqiJ7e3Dt4fSPASBiSkOf6TMpr6YSEF.5Tyh2`)
+
+> Legacy note: the old flow (portable MySQL at
+> `C:\YousufVNS\mysql\mysql-8.0.46-winx64` + `server/index.js`) is superseded;
+> `server/` stays in the repo but nothing starts it. Port 4000 must be free
+> for the embedded server.
 
 ---
 
@@ -39,20 +50,22 @@ Everything is scripted. From the project root:
 
 ```
 C:\YousufVNS\vns-app\vns-app\
-  electron/main.cjs              Electron main (IPC, pipeline runner, save dialog, report wiring)
+  electron/main.cjs              Electron main (IPC, pipeline runner, save dialog, report wiring, embedded backend start)
   electron/preload.cjs           Renderer bridge (window.workspace)
+  electron/server/               Embedded backend (§27): app.cjs, db.cjs (SQLite + admin seed), auth/admin/role routes
   electron/scriptRunner.cjs      ScriptRunner + SCRIPT_CONFIG (10 stages incl. report, .exe swap)
   electron/reportEngine.cjs      Builds report manifest + runs scripts/pipeline/report.py
   scripts/pipeline/*.py          10 stdlib-only pipeline scripts + vnsio.py (incl. report.py)
-  scripts/bin/                   (empty) — drop compiled .exe here per stage
+  scripts/bin/                   Compiled .exe per stage (also the production-swap drop point, see §17)
   scripts/build_pipeline_exe.ps1 PyInstaller EXE builder per stage
-  src/VNSApp.jsx                 React UI (all screens + PipelineRunButton + tab-based Data report)
+  src/VNSApp.jsx                 React UI (all screens + tab-based Data report)
   src/hooks/useWorkspace.js      IPC-backed hooks (usePipelineRunner etc.)
-  src/auth/                      LoginForm, SignupForm, AuthContext, AdminPanel, AuthGate
+  src/auth/                      LoginForm (forgot-password link hidden §27), SignupForm, AuthContext, AdminPanel, AuthGate
   src/App.css                    Styles (light + dark)
   src/CustomScreens.jsx          Custom "+ New Screen" logic
-  server/                        Express API (auth, admin, password reset)
-  start-dev.ps1 / stop-dev.ps1   One-command start/stop
+  server/                        LEGACY external Express + MySQL backend — kept, unused since §27
+  start-dev.ps1 / stop-dev.ps1   One-command start/stop (Vite + Electron only since §27)
+  make_project_report.py         Generates VNS_Project_Report.pdf from this log (§26)
   CHAT_LOG.md                    (this file)
 ```
 
@@ -129,7 +142,8 @@ use their own correctly-defined `handleReport`.
   message until you click **Select Folder** (Input tab). Works-as-designed;
   folder isn't persisted across restarts.
 - `electron/main.cjs` **does NOT hot-reload** — changing it requires an app
-  restart (`.\stop-dev.ps1 -KeepMysql` then `.\start-dev.ps1`).
+  restart (`.\stop-dev.ps1` then `.\start-dev.ps1`); since §27 this also
+  restarts the embedded backend/SQLite connection.
 - `.py` can't be spawned directly on Windows → `ScriptRunner` prepends
   `python`.
 - `rg` is not installed on this machine — use `Select-String`/`grep` in
@@ -298,6 +312,10 @@ Python script** for its own tab via the ScriptRunner IPC bridge.
 | 15 | Save-As dialog for report generation | Done |
 | 16 | Nav rail reorder (Data at end)  | Done   |
 | 17 | Data-tab sub-heading checkboxes in report | Done |
+| 18 | Checkbox tick style (§25)       | Done   |
+| 19 | Single-file portable deployment exe (§27) | Done |
+| 20 | Embedded SQLite backend, no MySQL (§27) | Done |
+| 21 | Forgot-password link hidden in UI (§27) | Done |
 
 ---
 
@@ -1139,5 +1157,92 @@ Pushed to GitHub: commit `bdb376f` (7 files) → `origin/main`
 `scripts/pipeline/__pycache__/report.cpython-314.pyc` (build artifact) and
 `release_selfcontained.zip` (stray artifact of the reverted self-contained
 backend experiment).
+
+## 26 VNS_Project_Report.pdf — project report generator (2026-09-15)
+
+Built `make_project_report.py` (project root, pure-stdlib, reuses
+`PdfBuilder`/`_wrap`/`_text_width`/font constants from
+`scripts/pipeline/report.py`) to turn **CHAT_LOG.md** into a standalone
+**VNS Project Report PDF** — a single source of truth for resuming the
+project without re-reading this log.
+
+### Content
+10 sections — Project Overview & Architecture, Getting Started (commands +
+credentials), Pipeline Engines (10 stages), Auth & Backend (admin approval,
+password recovery), Report Generation System, UI / UX Features & Changes,
+Feature Status (command/QA-table ledger of every shipped change incl.
+§10 + §17–25), Packaging / Installer / Delivery, Known Issues & Gotchas,
+Current Work State & Recent Changes (`bdb376f`, `bcdf1d2`, DHA_SUFA).
+
+### How it works
+- Two-pass render inside one script: `pass1` renders cover + body and
+  records the page each section **actually starts on** (recorded **after**
+  `h1()` so a heading that spills to a new page counts correctly); `pass2`
+  renders cover → Contents page (built from pass-1 numbers **+1**, the TOC
+  page offset) → body. Cover page: app brand + "VNS Project Report".
+- `PdfBuilder` gains `section_pages` (dict num→page), `render_body` helper,
+  and a `table()` helper (multi-column grid with 0.5pt rules, header row,
+  `\n`-wrapping via `_wrap`).
+- Tables need 2 or 3 real columns — a "columns + zero-width third column"
+  shortcut crashed (`NameError: 'i'` and 2-cell rows vs 3 header cols).
+- Section 2's command/table is 2 cols ([240, 420]); tables without an
+  explicit width split `TEXTW` evenly.
+
+### Verified
+- `python make_project_report.py` (optional `[out.pdf]` arg) →
+  `VNS_Project_Report.pdf`, **9 pages** (cover + Contents + 7 body pages).
+- Parsed the final PDF's page tree: TOC page numbers **exactly match** the
+  physical page each section heading renders on (1→3, 2→3, 3→4, 4→5, 5→5,
+  6→6, 7→7, 8→8, 9→8, 10→9) — `MATCH: True`.
+- Copied to the user's shrink-wrapped report folder:
+  `15_Report/session_2026-09-15T05-45-52-432Z/VNS_Project_Report.pdf`
+  (18057 bytes).
+
+Not yet pushed to GitHub (pending user request).
+
+## §27 — Single self-contained portable exe (2026-10-06)
+
+Task: ship **ONE exe** containing frontend + backend + database for a single-system deployment. Implemented by **restoring the §19 self-contained experiment from git history** (it had been reverted only because admin approval wasn't centralised — a single-system build is exactly what it was made for).
+
+### What was restored (`git checkout e7b182d -- …`)
+`electron/server/*` (app, db, middleware, routes/auth, routes/admin, routes/roleRequests), `electron/main.cjs`, `package.json`, `package-lock.json`, `.gitignore`, `start-dev.ps1`, `stop-dev.ps1`. No conflicts: none of those files had changed since the §19 revert (`3df2cdd`).
+
+### Architecture (now the shipping one)
+- **Backend inside Electron**: `startEmbeddedServer()` in `main.cjs` runs Express on `127.0.0.1:4000` once the app is ready; the React renderer keeps calling `http://localhost:4000/api` unchanged.
+- **Database**: better-sqlite3 → `%APPDATA%\vns-app\vns.db`, **plain/unencrypted SQLite** (header `SQLite format 3`), schema = `users` (incl. `status`), `sessions`, `password_resets`, `role_requests`; admin seeded on first run (`admin@vns.local` / `VNSProject`, status active).
+- **Frontend**: Vite `dist` inside `app.asar`; **pipeline engines**: all 10 stage exes in `app.asar.unpacked\scripts\bin`.
+- `start-dev.ps1` / `stop-dev.ps1` no longer start MySQL or `server/` — dev is Vite + Electron only. `server/` (MySQL Express) stays in the repo, unused.
+
+### Build config + machine notes
+- `package.json` `build.win.target = ["portable"]`; deps added: `express better-sqlite3 bcryptjs cookie-parser cors`; `asarUnpack` includes `node_modules/better-sqlite3/**/*`.
+- npm 12 blocks install scripts unless allow-listed: `npm install-scripts approve better-sqlite3 electron sharp` (writes `allowScripts` into package.json), then `npm rebuild better-sqlite3` + `npx @electron/rebuild -f -w better-sqlite3` (dev ABI). electron-builder re-installs the prebuilt native binary at package time.
+- Build: `npm run electron:build` or `npx electron-builder --win portable` (existing `electron-builder\Cache` = no admin needed; close the app first).
+
+### Deliverable
+`release\vns-app 0.0.0.exe` — **100,499,340 bytes (96 MB)**, single portable file. Copy it to the target PC and double-click: no installer, no admin rights, no Node/Python/MySQL. It extracts to `%TEMP%`, seeds the DB on first run, and runs fully offline.
+
+### QA (on this machine, from the built exe)
+- Process runs; `GET /api/health` up (~30 s first launch — 100 MB extraction); `POST /api/auth/login` (admin) → 200 + `/api/auth/me` session OK.
+- `%APPDATA%\vns-app\vns.db` created: 4 tables + seeded admin; a second account (`Yousuf@local.com`, active) was created through the packaged UI → signup/approval flow works.
+- `app.asar.unpacked` ships all 10 stage exes + `better_sqlite3.node`.
+- "Forgot password?" **button text absent** from the built bundle (LoginForm link commented out earlier this session; the now-unreachable Forgot/Reset views remain in source but cannot render).
+- Accounts are **per-machine** (inherent to single-system deployment). GitHub release `v0.0.0` still holds an old installer — do not distribute it; this exe supersedes it.
+
+### §27.1 Docs refreshed to match (2026-10-06)
+- **README.md** rewritten for the self-contained architecture: intro/stack/layout
+  now describe `electron/server/` + SQLite; MySQL setup demoted to a legacy note;
+  Quick start = `start-dev.ps1` / `stop-dev.ps1` (no `-KeepMysql`/`-NoApp`
+  semantics); accounts section points at `%APPDATA%\vns-app\vns.db` (SQLite,
+  per-machine); new **"Single-file deployment (the deliverable)"** section with
+  the exe table + QA results; Packaging section now documents the portable
+  target, the npm 12 `allowScripts` approval and the conditional (cold-cache)
+  elevation note.
+- **CHAT_LOG.md** §2 (how to run), §3 (project layout), §5 (hot-reload gotcha)
+  and §10 (feature ledger rows 18–21) updated to the §27 state.
+- **VNS_Project_Report.pdf** regenerated (10 pages, TOC verified exact) with the
+  same §27 content; copied to the project root, `C:\YousufVNS\` and the
+  shrink-wrapped `15_Report\session_2026-09-15T05-45-52-432Z\` folder.
+- `src/auth/LoginForm.jsx` "Forgot password?" link commented out (§27) — still
+  uncommitted along with everything above.
 
 

@@ -2,7 +2,9 @@
 node_modules/
 server/node_modules/
 dist/
-release/
+# release/ build output is ignored, except the shipped portable exe
+release/*
+!release/vns-app 0.0.0.exe
 release.zip
 
 # environment & secrets

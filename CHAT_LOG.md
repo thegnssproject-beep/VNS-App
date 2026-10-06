@@ -1242,7 +1242,16 @@ Task: ship **ONE exe** containing frontend + backend + database for a single-sys
 - **VNS_Project_Report.pdf** regenerated (10 pages, TOC verified exact) with the
   same §27 content; copied to the project root, `C:\YousufVNS\` and the
   shrink-wrapped `15_Report\session_2026-09-15T05-45-52-432Z\` folder.
-- `src/auth/LoginForm.jsx` "Forgot password?" link commented out (§27) — still
-  uncommitted along with everything above.
+- `src/auth/LoginForm.jsx` "Forgot password?" link commented out (§27) —
+  committed and pushed together with all of the above (`1436764`).
+- **GitHub Release `v0.1.0`** (marked latest):
+  https://github.com/thegnssproject-beep/VNS-App/releases/tag/v0.1.0 — asset
+  `vns-app.0.0.0.exe` (100,499,340 B, upload verified) = the portable build,
+  ready to download and run on any Windows PC. The stale `v0.0.0` release
+  still carries the old 196 MB NSIS installer (`vns-app.Setup.0.0.0.exe`) —
+  do not distribute that one.
+- Committed & pushed as `1436764` → `origin/main` (17 files); left out by
+  design: `scripts/pipeline/__pycache__`, root `__pycache__/`,
+  `release_selfcontained.zip`, `release/` (gitignored build output).
 
 

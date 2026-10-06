@@ -1247,9 +1247,9 @@ Task: ship **ONE exe** containing frontend + backend + database for a single-sys
 - **GitHub Release `v0.1.0`** (marked latest):
   https://github.com/thegnssproject-beep/VNS-App/releases/tag/v0.1.0 — asset
   `vns-app.0.0.0.exe` (100,499,340 B, upload verified) = the portable build,
-  ready to download and run on any Windows PC. The stale `v0.0.0` release
-  still carries the old 196 MB NSIS installer (`vns-app.Setup.0.0.0.exe`) —
-  do not distribute that one.
+  ready to download and run on any Windows PC. The stale `v0.0.0` release (old
+  196 MB NSIS installer from the §19 experiment) and its tag were **deleted** —
+  `v0.1.0` is now the only release.
 - Committed & pushed as `1436764` → `origin/main` (17 files); left out by
   design: `scripts/pipeline/__pycache__`, root `__pycache__/`,
   `release_selfcontained.zip`, `release/` (gitignored build output).

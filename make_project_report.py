@@ -438,7 +438,7 @@ SECTIONS = [
         ("b", "ESLint = 10 pre-existing set-state-in-effect errors only; npm run build + node --check on all touched electron files pass."),
         ("h2", "Known open thread"),
         ("b", "The telemetry log can look empty right after an app restart until the workspace folder is re-picked — the data lives on disk (top-level 12_Telemetry_Data + session 11_Telecommand_Data) and reloads once a root is selected."),
-        ("b", "Work since §25 (portable exe, embedded backend, UI change, CHAT_LOG updates) is not yet committed/pushed; the GitHub release v0.0.0 holds a stale installer and must not be distributed — ship the portable exe instead."),
+        ("b", "Delivered via GitHub Release v0.1.0 (latest): the portable exe is attached for direct download; the stale v0.0.0 release/tag from the §19 experiment were deleted. CHAT_LOG/README/report refreshed (§27.1); everything pushed as 1436764 + 1f4f3b2."),
         ("p", "This report was generated from CHAT_LOG.md to keep a single source of truth for resuming work later."),
     ]),
 ]
